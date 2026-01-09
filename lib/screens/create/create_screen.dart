@@ -58,11 +58,13 @@ class _CreateScreenState extends State<CreateScreen> {
         final base64 = 'data:image/png;base64,${base64Encode(bytes)}';
 
         setState(() {
-          _assets.add(GameAsset(
-            type: 'image',
-            name: 'User Image ${_assets.length + 1}',
-            url: base64,
-          ));
+          _assets.add(
+            GameAsset(
+              type: 'image',
+              name: 'User Image ${_assets.length + 1}',
+              url: base64,
+            ),
+          );
           _showInputOptions = false;
         });
 
@@ -78,11 +80,13 @@ class _CreateScreenState extends State<CreateScreen> {
 
     if (gifUrl != null && gifUrl.isNotEmpty) {
       setState(() {
-        _assets.add(GameAsset(
-          type: 'gif',
-          name: 'User GIF ${_assets.length + 1}',
-          url: gifUrl,
-        ));
+        _assets.add(
+          GameAsset(
+            type: 'gif',
+            name: 'User GIF ${_assets.length + 1}',
+            url: gifUrl,
+          ),
+        );
         _showInputOptions = false;
       });
 
@@ -95,11 +99,9 @@ class _CreateScreenState extends State<CreateScreen> {
 
     if (sound != null) {
       setState(() {
-        _assets.add(GameAsset(
-          type: 'sound',
-          name: sound['name']!,
-          url: sound['url']!,
-        ));
+        _assets.add(
+          GameAsset(type: 'sound', name: sound['name']!, url: sound['url']!),
+        );
         _showInputOptions = false;
       });
 
@@ -240,14 +242,31 @@ class _CreateScreenState extends State<CreateScreen> {
                             duration: const Duration(milliseconds: 200),
                             child: _showInputOptions
                                 ? Padding(
-                                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                                    padding: const EdgeInsets.fromLTRB(
+                                      16,
+                                      0,
+                                      16,
+                                      12,
+                                    ),
                                     child: Row(
                                       children: [
-                                        _buildThickOption(Icons.image_rounded, 'Image', onTap: _pickImage),
+                                        _buildThickOption(
+                                          Icons.image_rounded,
+                                          'Image',
+                                          onTap: _pickImage,
+                                        ),
                                         const SizedBox(width: 10),
-                                        _buildThickOption(Icons.music_note_rounded, 'Sound', onTap: _pickSound),
+                                        _buildThickOption(
+                                          Icons.music_note_rounded,
+                                          'Sound',
+                                          onTap: _pickSound,
+                                        ),
                                         const SizedBox(width: 10),
-                                        _buildThickOption(Icons.gif_rounded, 'GIF', onTap: _pickGif),
+                                        _buildThickOption(
+                                          Icons.gif_rounded,
+                                          'GIF',
+                                          onTap: _pickGif,
+                                        ),
                                       ],
                                     ),
                                   )
@@ -263,15 +282,23 @@ class _CreateScreenState extends State<CreateScreen> {
                                 child: ListView.separated(
                                   scrollDirection: Axis.horizontal,
                                   itemCount: _assets.length,
-                                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(width: 8),
                                   itemBuilder: (context, index) {
                                     final asset = _assets[index];
                                     return Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: asset.type == 'sound'
-                                            ? const Color(0xFF5576F8).withOpacity(0.15)
-                                            : const Color(0xFF25D366).withOpacity(0.15),
+                                            ? const Color(
+                                                0xFF5576F8,
+                                              ).withOpacity(0.15)
+                                            : const Color(
+                                                0xFF25D366,
+                                              ).withOpacity(0.15),
                                         borderRadius: BorderRadius.circular(20),
                                       ),
                                       child: Row(
@@ -281,8 +308,8 @@ class _CreateScreenState extends State<CreateScreen> {
                                             asset.type == 'sound'
                                                 ? Icons.music_note
                                                 : asset.type == 'gif'
-                                                    ? Icons.gif
-                                                    : Icons.image,
+                                                ? Icons.gif
+                                                : Icons.image,
                                             color: asset.type == 'sound'
                                                 ? const Color(0xFF5576F8)
                                                 : const Color(0xFF25D366),
@@ -304,7 +331,9 @@ class _CreateScreenState extends State<CreateScreen> {
                                             onTap: () => _removeAsset(index),
                                             child: Icon(
                                               Icons.close,
-                                              color: Colors.white.withOpacity(0.5),
+                                              color: Colors.white.withOpacity(
+                                                0.5,
+                                              ),
                                               size: 14,
                                             ),
                                           ),
@@ -347,17 +376,27 @@ class _CreateScreenState extends State<CreateScreen> {
                                 ),
                                 const SizedBox(width: 12),
                                 // Show free trial badge for anonymous users
-                                if (!ApiService().isLoggedIn && !ApiService().hasUsedFreeTrial)
+                                if (!ApiService().isLoggedIn &&
+                                    !ApiService().hasUsedFreeTrial)
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF25D366).withOpacity(0.15),
+                                      color: const Color(
+                                        0xFF25D366,
+                                      ).withOpacity(0.15),
                                       borderRadius: BorderRadius.circular(16),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        const Icon(Icons.star_rounded, color: Color(0xFF25D366), size: 14),
+                                        const Icon(
+                                          Icons.star_rounded,
+                                          color: Color(0xFF25D366),
+                                          size: 14,
+                                        ),
                                         const SizedBox(width: 4),
                                         Text(
                                           '1 Free Game',
@@ -373,7 +412,9 @@ class _CreateScreenState extends State<CreateScreen> {
                                 const Spacer(),
                                 // Send button
                                 GestureDetector(
-                                  onTap: (_isGenerating || !_hasText) ? null : _generateGame,
+                                  onTap: (_isGenerating || !_hasText)
+                                      ? null
+                                      : _generateGame,
                                   child: Container(
                                     width: 44,
                                     height: 44,
@@ -405,49 +446,6 @@ class _CreateScreenState extends State<CreateScreen> {
                           ),
                         ],
                       ),
-                    ),
-
-                    const SizedBox(height: 28),
-                    Text(
-                      'Quick Ideas',
-                      style: GoogleFonts.outfit(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Quick Prompts
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        _buildQuickPrompt(
-                          '🎮 3D Runner',
-                          'A 3D endless runner with dynamic camera angles, the player runs through a futuristic city with neon lights, can jump over obstacles, slide under barriers, and collect glowing orbs. Include smooth transitions between lanes, particle effects for speed boosts, and procedurally generated obstacles.',
-                        ),
-                        _buildQuickPrompt(
-                          '🏎️ Drift Racer',
-                          'A top-down drift racing game with realistic car physics, multiple race tracks, nitro boost system, and lap timing. Include skid marks, smoke particles, engine sounds, and a mini-map. Cars should have weight and momentum, with satisfying drift mechanics.',
-                        ),
-                        _buildQuickPrompt(
-                          '⚔️ Hack & Slash',
-                          'An isometric hack and slash action game with combo-based combat, multiple enemy types, and boss fights. Include a health bar, mana system for special attacks, dodge rolling, weapon variety, and satisfying hit effects with screen shake and particle explosions.',
-                        ),
-                        _buildQuickPrompt(
-                          '🧠 Physics Puzzle',
-                          'A physics-based puzzle game where you draw lines and shapes to guide a ball to the goal. Include realistic physics simulation, multiple levels with increasing difficulty, star rating system, and creative solutions. Add momentum, friction, and bouncy surfaces.',
-                        ),
-                        _buildQuickPrompt(
-                          '🌌 Space Shooter',
-                          'A vertical scrolling space shooter with upgradable weapons, shield powerups, and epic boss battles. Include bullet patterns, screen-clearing bombs, combo scoring system, and dynamic difficulty. Add particle explosions, laser beams, and satisfying enemy destruction effects.',
-                        ),
-                        _buildQuickPrompt(
-                          '🏰 Tower Defense',
-                          'A strategic tower defense game with multiple tower types, upgrade paths, and waves of enemies. Include a resource management system, special abilities, different enemy behaviors, and satisfying tower attack animations. Add path-finding enemies and strategic chokepoints.',
-                        ),
-                      ],
                     ),
                   ],
                 ),
@@ -484,33 +482,6 @@ class _CreateScreenState extends State<CreateScreen> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickPrompt(String label, String prompt) {
-    return GestureDetector(
-      onTap: () {
-        _promptController.text = prompt;
-        _promptController.selection = TextSelection.fromPosition(
-          TextPosition(offset: _promptController.text.length),
-        );
-        HapticFeedback.selectionClick();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.outfit(
-            color: Colors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
         ),
       ),
     );

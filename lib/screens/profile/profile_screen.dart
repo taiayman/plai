@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../data/models/user_model.dart';
 import '../../data/models/game_model.dart';
 import '../../services/api_service.dart';
+import '../../widgets/game_thumbnail.dart';
 import '../auth/auth_modal.dart';
 import 'edit_profile_screen.dart';
 import 'settings_screen.dart';
@@ -288,13 +289,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 // Games as 9:16 cards - horizontal scroll
                 if (_userGames.isEmpty)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 24,
+                    ),
                     child: GestureDetector(
                       onTap: () {
                         HapticFeedback.mediumImpact();
                         // Navigate to create screen (tab index 2)
                         // This assumes MainScaffold handles tab switching
-                        Navigator.of(context).popUntil((route) => route.isFirst);
+                        Navigator.of(
+                          context,
+                        ).popUntil((route) => route.isFirst);
                       },
                       child: Container(
                         width: double.infinity,
@@ -309,7 +315,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               width: 64,
                               height: 64,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF5576F8).withOpacity(0.15),
+                                color: const Color(
+                                  0xFF5576F8,
+                                ).withOpacity(0.15),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: const Icon(
@@ -438,6 +446,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildGameCard(GameModel game) {
+    // Calculate 9:16 aspect ratio dimensions
+    const double cardWidth = 112;
+    const double cardHeight = 200;
+
     return GestureDetector(
       onTap: () {
         HapticFeedback.mediumImpact();
@@ -454,7 +466,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       },
       child: Container(
-        width: 130,
+        width: cardWidth,
+        height: cardHeight,
         decoration: BoxDecoration(
           color: const Color(0xFF1E1E1E),
           borderRadius: BorderRadius.circular(24),
@@ -463,36 +476,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
           borderRadius: BorderRadius.circular(24),
           child: Stack(
             children: [
-              // Thumbnail
-              CachedNetworkImage(
-                imageUrl: game.thumbnailUrl,
-                width: 130,
-                height: double.infinity,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Container(
-                  color: const Color(0xFF2A2A2A),
-                  child: const Center(
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Color(0xFF5576F8),
+              // Thumbnail - use WebView if game HTML available, otherwise image
+              if (game.gameUrl != null && game.gameUrl!.isNotEmpty)
+                Positioned.fill(
+                  child: GameThumbnail(
+                    gameHtml: game.gameUrl!,
+                    width: cardWidth,
+                    height: cardHeight,
+                    borderRadius: 24,
+                  ),
+                )
+              else
+                Positioned.fill(
+                  child: CachedNetworkImage(
+                    imageUrl: game.thumbnailUrl,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(
+                      color: const Color(0xFF2A2A2A),
+                      child: const Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFF5576F8),
+                          ),
+                        ),
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => Container(
+                      color: const Color(0xFF2A2A2A),
+                      child: const Center(
+                        child: Icon(
+                          Icons.sports_esports_rounded,
+                          color: Color(0xFF5576F8),
+                          size: 32,
+                        ),
                       ),
                     ),
                   ),
                 ),
-                errorWidget: (context, url, error) => Container(
-                  color: const Color(0xFF2A2A2A),
-                  child: const Center(
-                    child: Icon(
-                      Icons.sports_esports_rounded,
-                      color: Color(0xFF5576F8),
-                      size: 32,
-                    ),
-                  ),
-                ),
-              ),
               // Gradient overlay at bottom
               Positioned(
                 left: 0,
@@ -504,7 +527,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [Colors.transparent, Colors.black.withOpacity(0.95)],
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.95),
+                      ],
                     ),
                   ),
                 ),

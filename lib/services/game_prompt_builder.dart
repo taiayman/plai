@@ -24,45 +24,24 @@ sound.play();
         : '';
 
     return '''
-You are an expert HTML5 game developer. Your task is to generate complete, playable games in a single HTML file.
+You are an HTML5 game developer. Output a complete playable game in a single HTML file.
 
-STRICT RULES:
-1. First, provide a VERY SHORT, simple status message (max 1 sentence).
-   Example: "I've created a platformer for you. Let me know if you'd like any changes."
-2. Then, output ONLY a single HTML file with embedded CSS and JavaScript in a markdown code block.
-3. Use HTML5 Canvas for rendering (preferred) or DOM-based for simple games
-4. Games MUST work on mobile devices with touch controls
-5. Include a proper game loop using requestAnimationFrame
-6. Ensure smooth animations and responsive controls
-7. Keep the game fun and engaging
-8. Include score tracking, game over state, and restart functionality
-9. Optimize for performance - smooth 60fps gameplay
-10. CRITICAL: Game canvas MUST fill the entire screen. Use CSS:
-    body { margin: 0; overflow: hidden; touch-action: none; }
-    canvas { display: block; width: 100vw; height: 100vh; }
+HTML5 Canvas. requestAnimationFrame. Include SFX (Web Audio API or Audio elements). Full screen: body{margin:0;overflow:hidden;background:#000;touch-action:none}canvas{display:block;width:100%;height:100%}
 $assetsSection
-GAME STRUCTURE:
-- Start screen with "Tap to Play" instruction
-- Active gameplay with clear objectives
-- Score display during gameplay
-- Game over screen with final score and restart option
-
-OUTPUT FORMAT:
-Start with the short status message, then provide the code block:
-
-I've created your game based on the description. Feel free to ask for modifications.
-
 \`\`\`html
 <!DOCTYPE html>
 <html>
-<!-- Complete game code here -->
 </html>
 \`\`\`
 ''';
   }
 
   /// Builds a refinement prompt when user wants to modify an existing game.
-  static String buildRefinementPrompt(String currentHtml, String userRequest, {List<GameAsset>? assets}) {
+  static String buildRefinementPrompt(
+    String currentHtml,
+    String userRequest, {
+    List<GameAsset>? assets,
+  }) {
     final assetsSection = assets != null && assets.isNotEmpty
         ? '''
 
@@ -72,34 +51,26 @@ ${assets.map((a) => '- ${a.type.toUpperCase()}: "${a.name}" - URL: ${a.url}').jo
         : '';
 
     return '''
-The user wants to modify their existing game. Here is the current game code:
+Modify this game:
 
 \`\`\`html
 $currentHtml
 \`\`\`
 $assetsSection
-USER REQUEST: $userRequest
-
-Modify the game according to the user's request.
-First, provide a VERY SHORT, simple confirmation (e.g., "I've updated the jump height for you.").
-Then, output the complete updated HTML file in a code block.
+$userRequest
 ''';
   }
 
   /// Builds the initial game generation prompt from user's description.
-  static String buildGamePrompt(String userDescription, {List<GameAsset>? assets}) {
+  static String buildGamePrompt(
+    String userDescription, {
+    List<GameAsset>? assets,
+  }) {
     final assetsNote = assets != null && assets.isNotEmpty
         ? '\n\nThe user has provided assets to use. Make sure to incorporate them into the game.'
         : '';
 
-    return '''
-Create a complete HTML5 game based on this description:
-
-"$userDescription"
-
-Make it with smooth animations and satisfying gameplay.
-The game should be immediately playable and fun.
-Remember: Keep your response text very short and simple.$assetsNote
+    return '''"$userDescription"$assetsNote
 ''';
   }
 }
@@ -110,9 +81,5 @@ class GameAsset {
   final String name;
   final String url;
 
-  const GameAsset({
-    required this.type,
-    required this.name,
-    required this.url,
-  });
+  const GameAsset({required this.type, required this.name, required this.url});
 }

@@ -214,10 +214,10 @@ async function handleGeminiGeneration(request, env, corsHeaders) {
         contents: requestBody.history,
         generationConfig: {
             thinkingConfig: {
-                thinkingLevel: "high",
+                thinkingLevel: "low",
                 includeThoughts: true
             },
-            temperature: 0.7,
+            temperature: 1,
             maxOutputTokens: 8192,
         }
     };

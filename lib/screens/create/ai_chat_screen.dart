@@ -45,7 +45,65 @@ class _AiChatScreenState extends State<AiChatScreen> {
   String _currentThinkingText = '';
   String _generatedHtml = '';
 
+  // Fake thinking steps for loading animation
+  final List<String> _fakeCreationSteps = [
+    'Analyzing game concept...',
+    'Designing game mechanics...',
+    'Setting up canvas...',
+    'Creating player controls...',
+    'Adding game physics...',
+    'Generating sprites...',
+    'Building game loop...',
+    'Adding visual effects...',
+    'Optimizing performance...',
+    'Polishing gameplay...',
+    'Finalizing game...',
+  ];
+
+  final List<String> _fakeRefinementSteps = [
+    'Reading your feedback...',
+    'Analyzing changes needed...',
+    'Modifying game logic...',
+    'Updating visuals...',
+    'Adjusting mechanics...',
+    'Refining controls...',
+    'Tweaking parameters...',
+    'Testing changes...',
+    'Applying polish...',
+    'Finalizing updates...',
+  ];
+
+  int _currentFakeStepIndex = 0;
+  Timer? _fakeThinkingTimer;
+  bool _isRefining = false;
+
+  List<String> get _currentFakeSteps =>
+      _isRefining ? _fakeRefinementSteps : _fakeCreationSteps;
+
+  void _startFakeThinking() {
+    _currentFakeStepIndex = 0;
+    _fakeThinkingTimer?.cancel();
+    _fakeThinkingTimer = Timer.periodic(const Duration(milliseconds: 2000), (
+      timer,
+    ) {
+      if (!mounted || _generationState != GameGenerationState.generating) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _currentFakeStepIndex =
+            (_currentFakeStepIndex + 1) % _currentFakeSteps.length;
+      });
+    });
+  }
+
+  void _stopFakeThinking() {
+    _fakeThinkingTimer?.cancel();
+    _fakeThinkingTimer = null;
+  }
+
   WebViewController? _webViewController;
+  WebViewController? _thumbnailWebViewController;
 
   @override
   void initState() {
@@ -64,7 +122,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
     try {
       // Initialize Gemini service
       await _geminiService.initialize();
-      _geminiService.startNewSession(assets: _assets.isNotEmpty ? _assets : null);
+      _geminiService.startNewSession(
+        assets: _assets.isNotEmpty ? _assets : null,
+      );
 
       // Start generating
       _generateGame(widget.initialPrompt);
@@ -79,20 +139,27 @@ class _AiChatScreenState extends State<AiChatScreen> {
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
+    _stopFakeThinking();
     super.dispose();
   }
 
   Future<void> _generateGame(String prompt) async {
+    _isRefining = false;
     setState(() {
       _generationState = GameGenerationState.generating;
       _currentStreamingText = '';
       _currentThinkingText = '';
     });
 
+    // Start fake thinking animation
+    _startFakeThinking();
+
     try {
       final gamePrompt = GamePromptBuilder.buildGamePrompt(prompt);
 
-      await for (final response in _geminiService.generateGameStream(gamePrompt)) {
+      await for (final response in _geminiService.generateGameStream(
+        gamePrompt,
+      )) {
         if (!mounted) return;
 
         setState(() {
@@ -104,6 +171,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
         _scrollToBottom();
       }
 
+      // Stop fake thinking
+      _stopFakeThinking();
+
       // Generation complete - extract HTML
       final html = GeminiService.extractHtmlFromResponse(_currentStreamingText);
 
@@ -111,10 +181,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
         _generatedHtml = html;
         _messages.add(
           ChatMessage(
-            text: html.isNotEmpty
-                ? "🎮 Game created!"
-                : _currentStreamingText,
+            text: html.isNotEmpty ? "🎮 Game created!" : _currentStreamingText,
             isUser: false,
+            gameHtml: html.isNotEmpty ? html : null,
           ),
         );
         _generationState = html.isNotEmpty
@@ -157,6 +226,76 @@ class _AiChatScreenState extends State<AiChatScreen> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.black)
       ..loadHtmlString(html);
+
+    // Create a scaled version for thumbnail preview
+    _initThumbnailWebViewController(html);
+  }
+
+  void _initThumbnailWebViewController(String html) {
+    // Inject CSS to ensure game renders at proper dimensions for thumbnail
+    // The WebView will handle scaling the content to fit the container
+    final scaledHtml = html.replaceFirst('<head>', '''<head>
+    <meta name="viewport" content="width=360, height=640, initial-scale=1, user-scalable=no">
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 360px !important;
+        height: 640px !important;
+        overflow: hidden !important;
+        background: #000 !important;
+      }
+      /* Hide scrollbars */
+      ::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+      * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
+      #game-container, .game-container, [class*="container"] {
+        width: 360px !important;
+        height: 640px !important;
+      }
+      canvas {
+        display: block !important;
+        max-width: 360px !important;
+        max-height: 640px !important;
+      }
+    </style>''');
+
+    _thumbnailWebViewController = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.black)
+      ..loadHtmlString(scaledHtml);
+  }
+
+  /// Create a scaled WebViewController for a specific HTML
+  /// Thumbnail container is 160x284, game content is designed for 360x640 (9:16)
+  WebViewController _createThumbnailController(String html) {
+    // Inject CSS to ensure game renders at proper dimensions for thumbnail
+    final scaledHtml = html.replaceFirst('<head>', '''<head>
+    <meta name="viewport" content="width=360, height=640, initial-scale=1, user-scalable=no">
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 360px !important;
+        height: 640px !important;
+        overflow: hidden !important;
+        background: #000 !important;
+      }
+      /* Hide scrollbars */
+      ::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+      * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
+      #game-container, .game-container, [class*="container"] {
+        width: 360px !important;
+        height: 640px !important;
+      }
+      canvas {
+        display: block !important;
+        max-width: 360px !important;
+        max-height: 640px !important;
+      }
+    </style>''');
+
+    return WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.black)
+      ..loadHtmlString(scaledHtml);
   }
 
   Future<void> _refineGame(String request) async {
@@ -165,11 +304,15 @@ class _AiChatScreenState extends State<AiChatScreen> {
       return;
     }
 
+    _isRefining = true;
     setState(() {
       _generationState = GameGenerationState.generating;
       _currentStreamingText = '';
       _currentThinkingText = '';
     });
+
+    // Start fake thinking animation
+    _startFakeThinking();
 
     try {
       await for (final response in _geminiService.refineGameStream(
@@ -187,6 +330,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
         _scrollToBottom();
       }
 
+      // Stop fake thinking
+      _stopFakeThinking();
+
       final html = GeminiService.extractHtmlFromResponse(_currentStreamingText);
 
       setState(() {
@@ -196,10 +342,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
         }
         _messages.add(
           ChatMessage(
-            text: html.isNotEmpty
-                ? "✨ Game updated!"
-                : _currentStreamingText,
+            text: html.isNotEmpty ? "✨ Game updated!" : _currentStreamingText,
             isUser: false,
+            gameHtml: html.isNotEmpty ? html : null,
           ),
         );
         _generationState = html.isNotEmpty
@@ -261,11 +406,13 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
     if (gifUrl != null && gifUrl.isNotEmpty) {
       setState(() {
-        _assets.add(GameAsset(
-          type: 'gif',
-          name: 'User GIF ${_assets.length + 1}',
-          url: gifUrl,
-        ));
+        _assets.add(
+          GameAsset(
+            type: 'gif',
+            name: 'User GIF ${_assets.length + 1}',
+            url: gifUrl,
+          ),
+        );
         _showInputOptions = false;
       });
 
@@ -279,7 +426,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.check_circle, color: Color(0xFF25D366), size: 20),
+                const Icon(
+                  Icons.check_circle,
+                  color: Color(0xFF25D366),
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'GIF added! AI will use it in the game.',
@@ -300,11 +451,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
     if (sound != null) {
       setState(() {
-        _assets.add(GameAsset(
-          type: 'sound',
-          name: sound['name']!,
-          url: sound['url']!,
-        ));
+        _assets.add(
+          GameAsset(type: 'sound', name: sound['name']!, url: sound['url']!),
+        );
         _showInputOptions = false;
       });
 
@@ -318,7 +467,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.music_note, color: Color(0xFF5576F8), size: 20),
+                const Icon(
+                  Icons.music_note,
+                  color: Color(0xFF5576F8),
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   '"${sound['name']}" added!',
@@ -503,15 +656,19 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
 
   Widget _buildToggleTab(String label, bool isActive) {
-    final isLocked = label == 'Preview' && _generationState == GameGenerationState.generating;
+    final isLocked =
+        label == 'Preview' &&
+        _generationState == GameGenerationState.generating;
 
     return GestureDetector(
-      onTap: isLocked ? null : () {
-        HapticFeedback.selectionClick();
-        setState(() {
-          _isPreviewMode = label == 'Preview';
-        });
-      },
+      onTap: isLocked
+          ? null
+          : () {
+              HapticFeedback.selectionClick();
+              setState(() {
+                _isPreviewMode = label == 'Preview';
+              });
+            },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
         curve: Curves.easeOutCubic,
@@ -536,7 +693,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
               style: GoogleFonts.outfit(
                 color: isLocked
                     ? const Color(0xFF555555)
-                    : isActive ? Colors.white : const Color(0xFF888888),
+                    : isActive
+                    ? Colors.white
+                    : const Color(0xFF888888),
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
@@ -568,53 +727,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
 
   Widget _buildThinkingUI() {
-    String thinkingLabel = 'Thinking...';
-
-    // Logic to extract the latest thought header
-    if (_currentThinkingText.isNotEmpty) {
-      // 1. Split into lines to analyze structure
-      final lines = _currentThinkingText.split('\n');
-
-      // 2. Look for the LAST line that looks like a header
-      // Matches: "**Step 1:**", "**Analysis**", "Step 1:", "1. Plan"
-      final headerRegex = RegExp(
-        r'^(\*\*.*?\*\*|Step \d+|Phase \d+|\d+\.\s+[A-Z])',
-        caseSensitive: false
-      );
-
-      String? foundHeader;
-
-      // Iterate backwards to find the most recent step
-      for (int i = lines.length - 1; i >= 0; i--) {
-        final line = lines[i].trim();
-        if (headerRegex.hasMatch(line)) {
-          foundHeader = line;
-          break;
-        }
-      }
-
-      if (foundHeader != null) {
-        // CLEANUP: Remove markdown (**), colons (:), and extra spaces
-        thinkingLabel = foundHeader
-            .replaceAll('*', '')
-            .replaceAll(':', '')
-            .replaceAll('#', '')
-            .trim();
-      } else {
-        // FALLBACK: If no "Step" title is found, show the last few words of the thought
-        final cleanText = _currentThinkingText.replaceAll('*', '').trim();
-        if (cleanText.length > 40) {
-          thinkingLabel = "...${cleanText.substring(cleanText.length - 40)}";
-        } else {
-          thinkingLabel = cleanText;
-        }
-      }
-
-      // Final Safety: Truncate if too long
-      if (thinkingLabel.length > 30) {
-        thinkingLabel = '${thinkingLabel.substring(0, 30)}...';
-      }
-    }
+    // Use fake thinking steps for smooth animation
+    final steps = _currentFakeSteps;
+    final thinkingLabel = steps[_currentFakeStepIndex % steps.length];
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
@@ -628,7 +743,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
               const SizedBox(width: 12),
               Flexible(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF5576F8).withOpacity(0.15),
                     borderRadius: BorderRadius.circular(12),
@@ -694,50 +812,75 @@ class _AiChatScreenState extends State<AiChatScreen> {
                               Positioned(
                                 top: 60,
                                 left: 20,
-                                child: Container(
-                                  width: 100,
-                                  height: 100,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF5576F8),
-                                    shape: BoxShape.circle,
-                                  ),
-                                )
-                                    .animate(onPlay: (c) => c.repeat())
-                                    .moveY(begin: 0, end: 60, duration: 2500.ms, curve: Curves.easeInOut)
-                                    .then()
-                                    .moveY(begin: 60, end: 0, duration: 2500.ms, curve: Curves.easeInOut),
+                                child:
+                                    Container(
+                                          width: 100,
+                                          height: 100,
+                                          decoration: const BoxDecoration(
+                                            color: Color(0xFF5576F8),
+                                            shape: BoxShape.circle,
+                                          ),
+                                        )
+                                        .animate(onPlay: (c) => c.repeat())
+                                        .moveY(
+                                          begin: 0,
+                                          end: 60,
+                                          duration: 2500.ms,
+                                          curve: Curves.easeInOut,
+                                        )
+                                        .then()
+                                        .moveY(
+                                          begin: 60,
+                                          end: 0,
+                                          duration: 2500.ms,
+                                          curve: Curves.easeInOut,
+                                        ),
                               ),
                               Positioned(
                                 bottom: 80,
                                 right: 10,
-                                child: Container(
-                                  width: 120,
-                                  height: 120,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFFF2C55),
-                                    shape: BoxShape.circle,
-                                  ),
-                                )
-                                    .animate(onPlay: (c) => c.repeat())
-                                    .moveX(begin: 0, end: -40, duration: 3500.ms, curve: Curves.easeInOut)
-                                    .then()
-                                    .moveX(begin: -40, end: 0, duration: 3500.ms, curve: Curves.easeInOut),
+                                child:
+                                    Container(
+                                          width: 120,
+                                          height: 120,
+                                          decoration: const BoxDecoration(
+                                            color: Color(0xFFFF2C55),
+                                            shape: BoxShape.circle,
+                                          ),
+                                        )
+                                        .animate(onPlay: (c) => c.repeat())
+                                        .moveX(
+                                          begin: 0,
+                                          end: -40,
+                                          duration: 3500.ms,
+                                          curve: Curves.easeInOut,
+                                        )
+                                        .then()
+                                        .moveX(
+                                          begin: -40,
+                                          end: 0,
+                                          duration: 3500.ms,
+                                          curve: Curves.easeInOut,
+                                        ),
                               ),
                             ],
                           ),
                         ),
                         Center(
-                          child: Text(
-                            'Creating...',
-                            style: GoogleFonts.outfit(
-                              color: Colors.white.withOpacity(0.8),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ).animate(onPlay: (c) => c.repeat()).shimmer(
-                                duration: const Duration(seconds: 2),
-                                color: Colors.white,
-                              ),
+                          child:
+                              Text(
+                                    'Creating...',
+                                    style: GoogleFonts.outfit(
+                                      color: Colors.white.withOpacity(0.8),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  )
+                                  .animate(onPlay: (c) => c.repeat())
+                                  .shimmer(
+                                    duration: const Duration(seconds: 2),
+                                    color: Colors.white,
+                                  ),
                         ),
                       ],
                     ),
@@ -752,7 +895,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
 
   Widget _buildStreamingMessage() {
-    final cleanText = GeminiService.getConversationalText(_currentStreamingText);
+    final cleanText = GeminiService.getConversationalText(
+      _currentStreamingText,
+    );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
@@ -810,7 +955,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   const SizedBox(height: 8),
                   Text(
                     cleanText.isNotEmpty
-                        ? (cleanText.length > 500 ? '${cleanText.substring(0, 500)}...' : cleanText)
+                        ? (cleanText.length > 500
+                              ? '${cleanText.substring(0, 500)}...'
+                              : cleanText)
                         : "Thinking...",
                     style: GoogleFonts.outfit(
                       color: Colors.white.withOpacity(0.7),
@@ -830,7 +977,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   Widget _buildThickMessageBubble(ChatMessage message) {
     final isUser = message.isUser;
-    final isGameCreatedMessage = !isUser && (message.text.contains('Game created') || message.text.contains('Game updated'));
+    final isGameCreatedMessage =
+        !isUser &&
+        (message.text.contains('Game created') ||
+            message.text.contains('Game updated'));
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -847,8 +997,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 _buildAvatar(isUser: false),
                 const SizedBox(width: 12),
               ],
-              if (isUser)
-                const Spacer(flex: 1),
+              if (isUser) const Spacer(flex: 1),
               Flexible(
                 flex: 3,
                 child: isUser
@@ -891,7 +1040,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
             ],
           ),
           // Show 9:16 preview card for game created messages
-          if (isGameCreatedMessage && _generatedHtml.isNotEmpty)
+          if (isGameCreatedMessage &&
+              message.gameHtml != null &&
+              message.gameHtml!.isNotEmpty)
             Transform.translate(
               offset: const Offset(0, -8),
               child: Padding(
@@ -901,6 +1052,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   child: GestureDetector(
                     onTap: () {
                       HapticFeedback.mediumImpact();
+                      // Load this message's game into preview
+                      _generatedHtml = message.gameHtml!;
+                      _initWebViewController(message.gameHtml!);
                       setState(() {
                         _isPreviewMode = true;
                       });
@@ -914,14 +1068,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: Stack(
-                          children: [
-                            // Actual game preview
-                            if (_webViewController != null)
-                              IgnorePointer(
-                                child: WebViewWidget(controller: _webViewController!),
-                              ),
-                          ],
+                        child: _GameThumbnail(
+                          html: message.gameHtml!,
+                          createController: _createThumbnailController,
                         ),
                       ),
                     ),
@@ -1017,22 +1166,77 @@ class _AiChatScreenState extends State<AiChatScreen> {
       return _buildEmptyPreview();
     }
 
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(10, 0, 10, 80),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(32),
-        border: Border.all(color: const Color(0xFF1E1E1E), width: 2),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(30),
-        child: _webViewController != null
-            ? WebViewWidget(controller: _webViewController!)
-            : const Center(
-                child: CircularProgressIndicator(color: Color(0xFF5576F8)),
+    return Column(
+      children: [
+        // Hint bar to ask AI for modifications
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() {
+              _isPreviewMode = false;
+            });
+          },
+          child: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFF5576F8).withOpacity(0.3),
               ),
-      ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.auto_fix_high_rounded,
+                  color: const Color(0xFF5576F8),
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Any issues? Ask AI to fix or modify the game',
+                    style: GoogleFonts.outfit(
+                      color: const Color(0xFFAAAAAA),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: const Color(0xFF666666),
+                  size: 14,
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Game preview
+        Expanded(
+          child: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(10, 0, 10, 80),
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(32),
+              border: Border.all(color: const Color(0xFF1E1E1E), width: 2),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: _webViewController != null
+                  ? WebViewWidget(controller: _webViewController!)
+                  : const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF5576F8),
+                      ),
+                    ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1167,9 +1371,17 @@ class _AiChatScreenState extends State<AiChatScreen> {
               margin: const EdgeInsets.only(bottom: 12),
               child: Row(
                 children: [
-                  _buildThickOption(Icons.image_rounded, 'Image', onTap: _pickImage),
+                  _buildThickOption(
+                    Icons.image_rounded,
+                    'Image',
+                    onTap: _pickImage,
+                  ),
                   const SizedBox(width: 10),
-                  _buildThickOption(Icons.music_note_rounded, 'Sound', onTap: _pickSound),
+                  _buildThickOption(
+                    Icons.music_note_rounded,
+                    'Sound',
+                    onTap: _pickSound,
+                  ),
                   const SizedBox(width: 10),
                   _buildThickOption(Icons.gif_rounded, 'GIF', onTap: _pickGif),
                 ],
@@ -1188,7 +1400,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 itemBuilder: (context, index) {
                   final asset = _assets[index];
                   return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: asset.type == 'sound'
                           ? const Color(0xFF5576F8).withOpacity(0.15)
@@ -1367,6 +1582,58 @@ class _AiChatScreenState extends State<AiChatScreen> {
 class ChatMessage {
   final String text;
   final bool isUser;
+  final String? gameHtml; // Store HTML for game created messages
 
-  ChatMessage({required this.text, required this.isUser});
+  ChatMessage({required this.text, required this.isUser, this.gameHtml});
+}
+
+/// Stateful widget to manage its own WebViewController for each thumbnail
+class _GameThumbnail extends StatefulWidget {
+  final String html;
+  final WebViewController Function(String) createController;
+
+  const _GameThumbnail({required this.html, required this.createController});
+
+  @override
+  State<_GameThumbnail> createState() => _GameThumbnailState();
+}
+
+class _GameThumbnailState extends State<_GameThumbnail> {
+  WebViewController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = widget.createController(widget.html);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_controller == null) {
+      return Container(color: Colors.black);
+    }
+
+    // Scale factor: thumbnail is 160x284, game is 360x640
+    // 160/360 = 0.444
+    const double scale = 0.444;
+
+    return ClipRect(
+      child: OverflowBox(
+        alignment: Alignment.topLeft,
+        maxWidth: 360,
+        maxHeight: 640,
+        child: Transform.scale(
+          scale: scale,
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 360,
+            height: 640,
+            child: IgnorePointer(
+              child: WebViewWidget(controller: _controller!),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
