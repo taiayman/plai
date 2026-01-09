@@ -211,6 +211,8 @@ Even if Google removes the app, you have:
 
 ## Quick Wins
 
+
+
 1. **Add share button today** - Start generating shareable links
 2. **Buy domain this week** - Secure plaireel.com
 3. **Simple landing page** - Even just "Coming to web soon" with email signup
