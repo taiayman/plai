@@ -1,8 +1,15 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/theme/app_colors.dart';
 import '../../services/api_service.dart';
+import '../../services/gemini_service.dart';
+import '../../services/game_prompt_builder.dart';
+import '../../widgets/gif_picker_sheet.dart';
+import '../../widgets/sound_picker_sheet.dart';
 import '../auth/auth_modal.dart';
 import 'ai_chat_screen.dart';
 
@@ -15,12 +22,96 @@ class CreateScreen extends StatefulWidget {
 
 class _CreateScreenState extends State<CreateScreen> {
   final TextEditingController _promptController = TextEditingController();
+  final ImagePicker _imagePicker = ImagePicker();
+  final List<GameAsset> _assets = [];
   bool _isGenerating = false;
+  bool _hasText = false;
+  bool _showInputOptions = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _promptController.addListener(() {
+      final hasText = _promptController.text.trim().isNotEmpty;
+      if (hasText != _hasText) {
+        setState(() => _hasText = hasText);
+      }
+    });
+  }
 
   @override
   void dispose() {
     _promptController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+      );
+
+      if (image != null) {
+        final bytes = await image.readAsBytes();
+        final base64 = 'data:image/png;base64,${base64Encode(bytes)}';
+
+        setState(() {
+          _assets.add(GameAsset(
+            type: 'image',
+            name: 'User Image ${_assets.length + 1}',
+            url: base64,
+          ));
+          _showInputOptions = false;
+        });
+
+        HapticFeedback.mediumImpact();
+      }
+    } catch (e) {
+      print('Error picking image: $e');
+    }
+  }
+
+  Future<void> _pickGif() async {
+    final gifUrl = await GifPickerSheet.show(context);
+
+    if (gifUrl != null && gifUrl.isNotEmpty) {
+      setState(() {
+        _assets.add(GameAsset(
+          type: 'gif',
+          name: 'User GIF ${_assets.length + 1}',
+          url: gifUrl,
+        ));
+        _showInputOptions = false;
+      });
+
+      HapticFeedback.mediumImpact();
+    }
+  }
+
+  Future<void> _pickSound() async {
+    final sound = await SoundPickerSheet.show(context);
+
+    if (sound != null) {
+      setState(() {
+        _assets.add(GameAsset(
+          type: 'sound',
+          name: sound['name']!,
+          url: sound['url']!,
+        ));
+        _showInputOptions = false;
+      });
+
+      HapticFeedback.mediumImpact();
+    }
+  }
+
+  void _removeAsset(int index) {
+    setState(() {
+      _assets.removeAt(index);
+    });
+    HapticFeedback.lightImpact();
   }
 
   void _generateGame() async {
@@ -39,16 +130,16 @@ class _CreateScreenState extends State<CreateScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-            AiChatScreen(initialPrompt: _promptController.text.trim()),
+        builder: (context) => AiChatScreen(
+          initialPrompt: _promptController.text.trim(),
+          initialAssets: _assets.isNotEmpty ? _assets : null,
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
-
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
         systemNavigationBarColor: const Color(0xFF0F0F0F),
@@ -106,36 +197,213 @@ class _CreateScreenState extends State<CreateScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Prompt Input Container
+                    // Prompt Input Container with Send Button
                     Container(
-                      height: 200,
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E1E1E),
                         borderRadius: BorderRadius.circular(24),
                       ),
-                      child: TextField(
-                        controller: _promptController,
-                        maxLines: null,
-                        expands: true,
-                        textAlignVertical: TextAlignVertical.top,
-                        style: GoogleFonts.outfit(
-                          color: Colors.white,
-                          fontSize: 18,
-                          height: 1.5,
-                        ),
-                        cursorColor: AppColors.accentPrimary,
-                        decoration: InputDecoration(
-                          hintText:
-                              'e.g., "A fast-paced endless runner where a neon cat dodges laser beams in a cyberpunk city..."',
-                          hintStyle: GoogleFonts.outfit(
-                            color: const Color(0xFF555555),
-                            fontSize: 18,
-                            height: 1.5,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(
+                            height: 160,
+                            child: TextField(
+                              controller: _promptController,
+                              maxLines: null,
+                              expands: true,
+                              textAlignVertical: TextAlignVertical.top,
+                              style: GoogleFonts.outfit(
+                                color: Colors.white,
+                                fontSize: 18,
+                                height: 1.5,
+                              ),
+                              cursorColor: AppColors.accentPrimary,
+                              decoration: InputDecoration(
+                                hintText:
+                                    'e.g., "A fast-paced endless runner where a neon cat dodges laser beams in a cyberpunk city..."',
+                                hintStyle: GoogleFonts.outfit(
+                                  color: const Color(0xFF555555),
+                                  fontSize: 18,
+                                  height: 1.5,
+                                ),
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                contentPadding: const EdgeInsets.all(20),
+                                filled: false,
+                              ),
+                            ),
                           ),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.all(20),
-                          filled: false,
-                        ),
+                          // Input options row (Image, Sound, GIF) - same style as AI chat
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 200),
+                            child: _showInputOptions
+                                ? Padding(
+                                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                                    child: Row(
+                                      children: [
+                                        _buildThickOption(Icons.image_rounded, 'Image', onTap: _pickImage),
+                                        const SizedBox(width: 10),
+                                        _buildThickOption(Icons.music_note_rounded, 'Sound', onTap: _pickSound),
+                                        const SizedBox(width: 10),
+                                        _buildThickOption(Icons.gif_rounded, 'GIF', onTap: _pickGif),
+                                      ],
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+
+                          // Show added assets - same style as AI chat
+                          if (_assets.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                              child: SizedBox(
+                                height: 40,
+                                child: ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: _assets.length,
+                                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                  itemBuilder: (context, index) {
+                                    final asset = _assets[index];
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: asset.type == 'sound'
+                                            ? const Color(0xFF5576F8).withOpacity(0.15)
+                                            : const Color(0xFF25D366).withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            asset.type == 'sound'
+                                                ? Icons.music_note
+                                                : asset.type == 'gif'
+                                                    ? Icons.gif
+                                                    : Icons.image,
+                                            color: asset.type == 'sound'
+                                                ? const Color(0xFF5576F8)
+                                                : const Color(0xFF25D366),
+                                            size: 16,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            asset.name.length > 12
+                                                ? '${asset.name.substring(0, 12)}...'
+                                                : asset.name,
+                                            style: GoogleFonts.outfit(
+                                              color: Colors.white,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          GestureDetector(
+                                            onTap: () => _removeAsset(index),
+                                            child: Icon(
+                                              Icons.close,
+                                              color: Colors.white.withOpacity(0.5),
+                                              size: 14,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+
+                          // Bottom row with add button and send button
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            child: Row(
+                              children: [
+                                // Add button
+                                GestureDetector(
+                                  onTap: () {
+                                    HapticFeedback.selectionClick();
+                                    setState(() {
+                                      _showInputOptions = !_showInputOptions;
+                                    });
+                                  },
+                                  child: Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF252525),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Icon(
+                                      _showInputOptions
+                                          ? Icons.close_rounded
+                                          : Icons.add_rounded,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                // Show free trial badge for anonymous users
+                                if (!ApiService().isLoggedIn && !ApiService().hasUsedFreeTrial)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF25D366).withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.star_rounded, color: Color(0xFF25D366), size: 14),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '1 Free Game',
+                                          style: GoogleFonts.outfit(
+                                            color: const Color(0xFF25D366),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                const Spacer(),
+                                // Send button
+                                GestureDetector(
+                                  onTap: (_isGenerating || !_hasText) ? null : _generateGame,
+                                  child: Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: _hasText
+                                          ? AppColors.accentPrimary
+                                          : const Color(0xFF333333),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: _isGenerating
+                                        ? const Padding(
+                                            padding: EdgeInsets.all(12),
+                                            child: CircularProgressIndicator(
+                                              color: Colors.white,
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : Icon(
+                                            Icons.arrow_upward_rounded,
+                                            color: _hasText
+                                                ? Colors.white
+                                                : const Color(0xFF666666),
+                                            size: 24,
+                                          ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
 
@@ -156,28 +424,28 @@ class _CreateScreenState extends State<CreateScreen> {
                       runSpacing: 10,
                       children: [
                         _buildQuickPrompt(
-                          '🏎️ Racing',
-                          'A fast racing game where you dodge traffic on a neon highway',
+                          '🎮 3D Runner',
+                          'A 3D endless runner with dynamic camera angles, the player runs through a futuristic city with neon lights, can jump over obstacles, slide under barriers, and collect glowing orbs. Include smooth transitions between lanes, particle effects for speed boosts, and procedurally generated obstacles.',
                         ),
                         _buildQuickPrompt(
-                          '🧩 Puzzle',
-                          'A relaxing puzzle game where you match colorful gems to score points',
+                          '🏎️ Drift Racer',
+                          'A top-down drift racing game with realistic car physics, multiple race tracks, nitro boost system, and lap timing. Include skid marks, smoke particles, engine sounds, and a mini-map. Cars should have weight and momentum, with satisfying drift mechanics.',
                         ),
                         _buildQuickPrompt(
-                          '🎯 Shooter',
-                          'A space shooter where you destroy alien ships with laser beams',
+                          '⚔️ Hack & Slash',
+                          'An isometric hack and slash action game with combo-based combat, multiple enemy types, and boss fights. Include a health bar, mana system for special attacks, dodge rolling, weapon variety, and satisfying hit effects with screen shake and particle explosions.',
                         ),
                         _buildQuickPrompt(
-                          '🏃 Platformer',
-                          'A jumping platformer where you collect coins and avoid obstacles',
+                          '🧠 Physics Puzzle',
+                          'A physics-based puzzle game where you draw lines and shapes to guide a ball to the goal. Include realistic physics simulation, multiple levels with increasing difficulty, star rating system, and creative solutions. Add momentum, friction, and bouncy surfaces.',
                         ),
                         _buildQuickPrompt(
-                          '🏰 RPG',
-                          'A dungeon adventure where you fight monsters and find treasure',
+                          '🌌 Space Shooter',
+                          'A vertical scrolling space shooter with upgradable weapons, shield powerups, and epic boss battles. Include bullet patterns, screen-clearing bombs, combo scoring system, and dynamic difficulty. Add particle explosions, laser beams, and satisfying enemy destruction effects.',
                         ),
                         _buildQuickPrompt(
-                          '🚀 Space',
-                          'An asteroid dodging game in deep space with power-ups',
+                          '🏰 Tower Defense',
+                          'A strategic tower defense game with multiple tower types, upgrade paths, and waves of enemies. Include a resource management system, special abilities, different enemy behaviors, and satisfying tower attack animations. Add path-finding enemies and strategic chokepoints.',
                         ),
                       ],
                     ),
@@ -185,96 +453,34 @@ class _CreateScreenState extends State<CreateScreen> {
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
 
-            // Bottom Action Area
-            Container(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 16,
-                bottom: bottomPadding + 16,
-              ),
-              decoration: const BoxDecoration(
-                color: Color(0xFF0F0F0F),
-                border: Border(
-                  top: BorderSide(color: Color(0xFF1E1E1E), width: 1),
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Show free trial badge for anonymous users
-                  if (!ApiService().isLoggedIn && !ApiService().hasUsedFreeTrial)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF25D366).withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.star_rounded, color: Color(0xFF25D366), size: 16),
-                            const SizedBox(width: 6),
-                            Text(
-                              '1 Free Game - No account needed!',
-                              style: GoogleFonts.outfit(
-                                color: const Color(0xFF25D366),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: GestureDetector(
-                      onTap: _isGenerating ? null : _generateGame,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.accentPrimary,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Center(
-                          child: _isGenerating
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2.5,
-                                  ),
-                                )
-                              : Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.auto_awesome,
-                                      color: Colors.white,
-                                      size: 22,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Generate Game',
-                                      style: GoogleFonts.outfit(
-                                        color: Colors.white,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+  Widget _buildThickOption(IconData icon, String label, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap?.call();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: const Color(0xFF5576F8), size: 20),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: GoogleFonts.outfit(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],

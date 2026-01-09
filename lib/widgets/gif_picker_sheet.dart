@@ -27,14 +27,17 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
   bool _isLoading = true;
   String _searchQuery = '';
 
-  // Tenor API - free tier, no auth needed for basic usage
-  static const String _tenorApiKey = 'AIzaSyAyimkuYQYF_FXVALexPuGQctUWRURdCYQ'; // Public API key
-  static const String _tenorBaseUrl = 'https://tenor.googleapis.com/v2';
+  // Use Worker proxy instead of direct Tenor API
+  static const String _workerBaseUrl = 'https://my-chat-helper.taiayman13-ed6.workers.dev';
+  static const String _appSecret = 'MySecretPassword123';
 
   @override
   void initState() {
     super.initState();
-    _loadTrendingGifs();
+    // Load memes by default
+    _searchQuery = 'Memes';
+    _searchController.text = 'Memes';
+    _searchGifs('Memes');
   }
 
   @override
@@ -48,7 +51,8 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
 
     try {
       final response = await http.get(
-        Uri.parse('$_tenorBaseUrl/featured?key=$_tenorApiKey&limit=30&media_filter=gif'),
+        Uri.parse('$_workerBaseUrl/tenor/featured'),
+        headers: {'App-Secret': _appSecret},
       );
 
       if (response.statusCode == 200) {
@@ -77,7 +81,8 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
 
     try {
       final response = await http.get(
-        Uri.parse('$_tenorBaseUrl/search?key=$_tenorApiKey&q=$query&limit=30&media_filter=gif'),
+        Uri.parse('$_workerBaseUrl/tenor/search?q=${Uri.encodeComponent(query)}'),
+        headers: {'App-Secret': _appSecret},
       );
 
       if (response.statusCode == 200) {
@@ -93,6 +98,7 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
     }
   }
 
+  // Tenor response format
   String _getGifUrl(Map<String, dynamic> gif) {
     try {
       return gif['media_formats']['gif']['url'] ?? '';
@@ -138,7 +144,7 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
             child: Row(
               children: [
                 Text(
-                  'Choose a GIF',
+                  'Choose a Meme',
                   style: GoogleFonts.outfit(
                     color: Colors.white,
                     fontSize: 20,
@@ -174,10 +180,12 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
                 style: GoogleFonts.outfit(color: Colors.white, fontSize: 16),
                 cursorColor: const Color(0xFF5576F8),
                 decoration: InputDecoration(
-                  hintText: 'Search GIFs...',
+                  hintText: 'Search memes...',
                   hintStyle: GoogleFonts.outfit(color: const Color(0xFF555555)),
                   prefixIcon: const Icon(Icons.search, color: Color(0xFF555555)),
                   border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
                 onSubmitted: _searchGifs,

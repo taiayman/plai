@@ -114,6 +114,54 @@ class _GameWebViewState extends State<GameWebView> {
   }
 
   @override
+  void dispose() {
+    widget.controller?._detach();
+    super.dispose();
+  }
+
+  // Default demo game when no game HTML is provided
+  static const String _defaultGameHtml = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            width: 100%; height: 100%;
+            overflow: hidden;
+            background: linear-gradient(180deg, #1a1a2e 0%, #0f0f23 100%);
+            font-family: -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+        .text {
+            color: rgba(255,255,255,0.5);
+            font-size: 18px;
+            text-align: center;
+        }
+        .subtext {
+            color: rgba(255,255,255,0.3);
+            font-size: 14px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="icon">🎮</div>
+    <div class="text">No game loaded</div>
+    <div class="subtext">Swipe to browse games</div>
+</body>
+</html>''';
+
+  @override
   Widget build(BuildContext context) {
     // We wrap the WebView in a GestureDetector to allow it to receive touches
     // The PageView in HomeScreen uses `_isGameInteracting` to decide whether to scroll.

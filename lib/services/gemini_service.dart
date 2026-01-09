@@ -23,7 +23,15 @@ class ChatMessage {
   }
 }
 
-/// Production-ready Gemini API service via Cloudflare Worker proxy.
+/// Response containing both thinking and output text
+class GeminiResponse {
+  final String thinkingText;
+  final String outputText;
+
+  GeminiResponse({required this.thinkingText, required this.outputText});
+}
+
+/// Production-ready Gemini API service via Cloudflare Worker proxy with streaming.
 class GeminiService {
   // Cloudflare Worker URL
   static const String _workerUrl =
@@ -69,8 +77,8 @@ class GeminiService {
     });
   }
 
-  /// Generate game code (non-streaming, returns complete response).
-  Stream<String> generateGameStream(String prompt) async* {
+  /// Generate game code with real-time streaming of thoughts.
+  Stream<GeminiResponse> generateGameStream(String prompt) async* {
     if (!_isInitialized) {
       throw Exception(
         'GeminiService not initialized. Call initialize() first.',
@@ -85,66 +93,112 @@ class GeminiService {
       ],
     });
 
-    try {
-      final response = await http.post(
-        Uri.parse(_workerUrl),
-        headers: {'Content-Type': 'application/json', 'App-Secret': _appSecret},
-        body: jsonEncode({'history': _chatHistory}),
-      );
+    final client = http.Client();
 
-      if (response.statusCode == 401) {
+    try {
+      final request = http.Request('POST', Uri.parse(_workerUrl));
+      request.headers['Content-Type'] = 'application/json';
+      request.headers['App-Secret'] = _appSecret;
+      request.body = jsonEncode({'history': _chatHistory});
+
+      final streamedResponse = await client.send(request);
+
+      if (streamedResponse.statusCode == 401) {
         throw Exception('Unauthorized: Invalid App-Secret');
       }
 
-      if (response.statusCode != 200) {
-        throw Exception('API Error: ${response.statusCode} - ${response.body}');
+      if (streamedResponse.statusCode != 200) {
+        throw Exception('API Error: ${streamedResponse.statusCode}');
       }
 
-      final data = jsonDecode(response.body);
+      String thinkingText = '';
+      String outputText = '';
+      String buffer = '';
 
-      // Check for API errors
-      if (data['error'] != null) {
-        throw Exception('Gemini Error: ${data['error']}');
+      // Process the SSE stream
+      await for (final chunk in streamedResponse.stream.transform(utf8.decoder)) {
+        buffer += chunk;
+
+        // Parse SSE events (each event is "data: {...}\n\n")
+        while (buffer.contains('\n')) {
+          final newlineIndex = buffer.indexOf('\n');
+          final line = buffer.substring(0, newlineIndex);
+          buffer = buffer.substring(newlineIndex + 1);
+
+          if (line.startsWith('data: ')) {
+            final jsonStr = line.substring(6).trim();
+            if (jsonStr.isEmpty || jsonStr == '[DONE]') continue;
+
+            try {
+              final data = jsonDecode(jsonStr);
+
+              // Check for API errors
+              if (data['error'] != null) {
+                throw Exception('Gemini Error: ${data['error']}');
+              }
+
+              final parts = data['candidates']?[0]?['content']?['parts'] as List<dynamic>?;
+
+              if (parts != null) {
+                for (final part in parts) {
+                  if (part['thought'] == true) {
+                    // This is a thinking part
+                    thinkingText += part['text'] ?? '';
+                  } else {
+                    // This is the output part
+                    outputText += part['text'] ?? '';
+                  }
+                }
+
+                // Yield updated response
+                yield GeminiResponse(
+                  thinkingText: thinkingText,
+                  outputText: outputText,
+                );
+              }
+            } catch (e) {
+              // Skip invalid JSON lines
+              if (e is FormatException) continue;
+              rethrow;
+            }
+          }
+        }
       }
 
-      // Extract text from response
-      final text =
-          data['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '';
-
-      if (text.isEmpty) {
+      // Ensure we have some output
+      if (outputText.isEmpty && thinkingText.isEmpty) {
         throw Exception('Empty response from Gemini');
       }
 
-      // Add model response to history
+      // Add model response to history (only the output, not thinking)
       _chatHistory.add({
         'role': 'model',
         'parts': [
-          {'text': text},
+          {'text': outputText},
         ],
       });
-
-      // Yield the complete response (simulating stream for compatibility)
-      yield text;
     } catch (e) {
       // Remove failed user message from history
       if (_chatHistory.isNotEmpty && _chatHistory.last['role'] == 'user') {
         _chatHistory.removeLast();
       }
       rethrow;
+    } finally {
+      client.close();
     }
   }
 
   /// Generate game code synchronously (non-streaming).
-  Future<String> generateGame(String prompt) async {
-    final buffer = StringBuffer();
-    await for (final chunk in generateGameStream(prompt)) {
-      buffer.write(chunk);
+  Future<GeminiResponse> generateGame(String prompt) async {
+    GeminiResponse? result;
+    await for (final response in generateGameStream(prompt)) {
+      result = response;
     }
-    return buffer.toString();
+    return result ?? GeminiResponse(thinkingText: '', outputText: '');
   }
 
   /// Refine an existing game based on user feedback.
-  Stream<String> refineGameStream(
+  Stream<GeminiResponse> refineGameStream(
     String currentHtml,
     String userRequest, {
     List<GameAsset>? assets,

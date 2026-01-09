@@ -8,6 +8,7 @@ class CommentModel {
   final DateTime timestamp;
   final int likeCount;
   final bool isLiked;
+  final String? parentId; // For nested replies
   final List<CommentModel> replies;
 
   const CommentModel({
@@ -17,6 +18,7 @@ class CommentModel {
     required this.timestamp,
     this.likeCount = 0,
     this.isLiked = false,
+    this.parentId,
     this.replies = const [],
   });
 
@@ -27,6 +29,7 @@ class CommentModel {
     DateTime? timestamp,
     int? likeCount,
     bool? isLiked,
+    String? parentId,
     List<CommentModel>? replies,
   }) {
     return CommentModel(
@@ -36,6 +39,7 @@ class CommentModel {
       timestamp: timestamp ?? this.timestamp,
       likeCount: likeCount ?? this.likeCount,
       isLiked: isLiked ?? this.isLiked,
+      parentId: parentId ?? this.parentId,
       replies: replies ?? this.replies,
     );
   }

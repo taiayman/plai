@@ -6,7 +6,6 @@ import 'dart:ui';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'post_game_screen.dart';
 import '../../services/gemini_service.dart';
 import '../../services/game_prompt_builder.dart';
@@ -18,8 +17,13 @@ import '../auth/auth_modal.dart';
 
 class AiChatScreen extends StatefulWidget {
   final String initialPrompt;
+  final List<GameAsset>? initialAssets;
 
-  const AiChatScreen({super.key, required this.initialPrompt});
+  const AiChatScreen({
+    super.key,
+    required this.initialPrompt,
+    this.initialAssets,
+  });
 
   @override
   State<AiChatScreen> createState() => _AiChatScreenState();
@@ -38,6 +42,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
   GameGenerationState _generationState = GameGenerationState.idle;
 
   String _currentStreamingText = '';
+  String _currentThinkingText = '';
   String _generatedHtml = '';
 
   WebViewController? _webViewController;
@@ -45,6 +50,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
   @override
   void initState() {
     super.initState();
+    // Initialize with assets from create screen if provided
+    if (widget.initialAssets != null && widget.initialAssets!.isNotEmpty) {
+      _assets.addAll(widget.initialAssets!);
+    }
     _initializeAndGenerate();
   }
 
@@ -77,16 +86,18 @@ class _AiChatScreenState extends State<AiChatScreen> {
     setState(() {
       _generationState = GameGenerationState.generating;
       _currentStreamingText = '';
+      _currentThinkingText = '';
     });
 
     try {
       final gamePrompt = GamePromptBuilder.buildGamePrompt(prompt);
 
-      await for (final chunk in _geminiService.generateGameStream(gamePrompt)) {
+      await for (final response in _geminiService.generateGameStream(gamePrompt)) {
         if (!mounted) return;
 
         setState(() {
-          _currentStreamingText += chunk;
+          _currentThinkingText = response.thinkingText;
+          _currentStreamingText = response.outputText;
         });
 
         // Auto-scroll to bottom
@@ -95,14 +106,13 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
       // Generation complete - extract HTML
       final html = GeminiService.extractHtmlFromResponse(_currentStreamingText);
-      final conversationText = GeminiService.getConversationalText(_currentStreamingText);
 
       setState(() {
         _generatedHtml = html;
         _messages.add(
           ChatMessage(
             text: html.isNotEmpty
-                ? (conversationText.isNotEmpty ? conversationText : "🎮 Your game is ready! Tap 'Preview' to play it.")
+                ? "🎮 Game created!"
                 : _currentStreamingText,
             isUser: false,
           ),
@@ -111,6 +121,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
             ? GameGenerationState.preview
             : GameGenerationState.idle;
         _currentStreamingText = '';
+        _currentThinkingText = '';
 
         // Auto-switch to preview if game is generated
         if (html.isNotEmpty) {
@@ -157,10 +168,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
     setState(() {
       _generationState = GameGenerationState.generating;
       _currentStreamingText = '';
+      _currentThinkingText = '';
     });
 
     try {
-      await for (final chunk in _geminiService.refineGameStream(
+      await for (final response in _geminiService.refineGameStream(
         _generatedHtml,
         request,
         assets: _assets.isNotEmpty ? _assets : null,
@@ -168,14 +180,14 @@ class _AiChatScreenState extends State<AiChatScreen> {
         if (!mounted) return;
 
         setState(() {
-          _currentStreamingText += chunk;
+          _currentThinkingText = response.thinkingText;
+          _currentStreamingText = response.outputText;
         });
 
         _scrollToBottom();
       }
 
       final html = GeminiService.extractHtmlFromResponse(_currentStreamingText);
-      final conversationText = GeminiService.getConversationalText(_currentStreamingText);
 
       setState(() {
         if (html.isNotEmpty) {
@@ -185,7 +197,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
         _messages.add(
           ChatMessage(
             text: html.isNotEmpty
-                ? (conversationText.isNotEmpty ? conversationText : "✨ I've updated your game! Check the preview.")
+                ? "✨ Game updated!"
                 : _currentStreamingText,
             isUser: false,
           ),
@@ -194,6 +206,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
             ? GameGenerationState.preview
             : GameGenerationState.idle;
         _currentStreamingText = '';
+        _currentThinkingText = '';
 
         // Auto-switch to preview if game is generated
         if (html.isNotEmpty) {
@@ -490,8 +503,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
 
   Widget _buildToggleTab(String label, bool isActive) {
+    final isLocked = label == 'Preview' && _generationState == GameGenerationState.generating;
+
     return GestureDetector(
-      onTap: () {
+      onTap: isLocked ? null : () {
         HapticFeedback.selectionClick();
         setState(() {
           _isPreviewMode = label == 'Preview';
@@ -505,50 +520,234 @@ class _AiChatScreenState extends State<AiChatScreen> {
           color: isActive ? const Color(0xFF2C2C2C) : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Text(
-          label,
-          style: GoogleFonts.outfit(
-            color: isActive ? Colors.white : const Color(0xFF888888),
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isLocked) ...[
+              Icon(
+                Icons.lock_rounded,
+                size: 12,
+                color: const Color(0xFF555555),
+              ),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: GoogleFonts.outfit(
+                color: isLocked
+                    ? const Color(0xFF555555)
+                    : isActive ? Colors.white : const Color(0xFF888888),
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildChatList() {
-    final showStreaming =
-        _generationState == GameGenerationState.generating &&
-        _currentStreamingText.isNotEmpty;
+    final isGenerating = _generationState == GameGenerationState.generating;
 
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      itemCount:
-          _messages.length +
-          (showStreaming ? 1 : 0) +
-          (_generationState == GameGenerationState.generating &&
-                  _currentStreamingText.isEmpty
-              ? 1
-              : 0),
+      itemCount: _messages.length + (isGenerating ? 1 : 0),
       itemBuilder: (context, index) {
-        // Show typing indicator when generating but no text yet
-        if (index == _messages.length &&
-            _generationState == GameGenerationState.generating &&
-            _currentStreamingText.isEmpty) {
-          return _buildTypingIndicator();
-        }
-
-        // Show streaming text
-        if (index == _messages.length && showStreaming) {
-          return _buildStreamingMessage();
+        // Show thinking/generating UI when generating
+        if (index == _messages.length && isGenerating) {
+          return _buildThinkingUI();
         }
 
         if (index >= _messages.length) return const SizedBox.shrink();
 
         return _buildThickMessageBubble(_messages[index]);
       },
+    );
+  }
+
+  Widget _buildThinkingUI() {
+    String thinkingLabel = 'Thinking...';
+
+    // Logic to extract the latest thought header
+    if (_currentThinkingText.isNotEmpty) {
+      // 1. Split into lines to analyze structure
+      final lines = _currentThinkingText.split('\n');
+
+      // 2. Look for the LAST line that looks like a header
+      // Matches: "**Step 1:**", "**Analysis**", "Step 1:", "1. Plan"
+      final headerRegex = RegExp(
+        r'^(\*\*.*?\*\*|Step \d+|Phase \d+|\d+\.\s+[A-Z])',
+        caseSensitive: false
+      );
+
+      String? foundHeader;
+
+      // Iterate backwards to find the most recent step
+      for (int i = lines.length - 1; i >= 0; i--) {
+        final line = lines[i].trim();
+        if (headerRegex.hasMatch(line)) {
+          foundHeader = line;
+          break;
+        }
+      }
+
+      if (foundHeader != null) {
+        // CLEANUP: Remove markdown (**), colons (:), and extra spaces
+        thinkingLabel = foundHeader
+            .replaceAll('*', '')
+            .replaceAll(':', '')
+            .replaceAll('#', '')
+            .trim();
+      } else {
+        // FALLBACK: If no "Step" title is found, show the last few words of the thought
+        final cleanText = _currentThinkingText.replaceAll('*', '').trim();
+        if (cleanText.length > 40) {
+          thinkingLabel = "...${cleanText.substring(cleanText.length - 40)}";
+        } else {
+          thinkingLabel = cleanText;
+        }
+      }
+
+      // Final Safety: Truncate if too long
+      if (thinkingLabel.length > 30) {
+        thinkingLabel = '${thinkingLabel.substring(0, 30)}...';
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Thinking header with dynamic step title
+          Row(
+            children: [
+              _buildAvatar(isUser: false),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF5576F8).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: const Color(0xFF5576F8),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: Text(
+                            thinkingLabel,
+                            key: ValueKey<String>(thinkingLabel),
+                            style: GoogleFonts.outfit(
+                              color: const Color(0xFF5576F8),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // GTA V-style blurred preview animation
+          Transform.translate(
+            offset: const Offset(0, -8),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 56, top: 16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  width: 160,
+                  height: 284,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A1A),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Stack(
+                      children: [
+                        Container(color: Colors.black),
+                        ImageFiltered(
+                          imageFilter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+                          child: Stack(
+                            children: [
+                              Positioned(
+                                top: 60,
+                                left: 20,
+                                child: Container(
+                                  width: 100,
+                                  height: 100,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF5576F8),
+                                    shape: BoxShape.circle,
+                                  ),
+                                )
+                                    .animate(onPlay: (c) => c.repeat())
+                                    .moveY(begin: 0, end: 60, duration: 2500.ms, curve: Curves.easeInOut)
+                                    .then()
+                                    .moveY(begin: 60, end: 0, duration: 2500.ms, curve: Curves.easeInOut),
+                              ),
+                              Positioned(
+                                bottom: 80,
+                                right: 10,
+                                child: Container(
+                                  width: 120,
+                                  height: 120,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFFF2C55),
+                                    shape: BoxShape.circle,
+                                  ),
+                                )
+                                    .animate(onPlay: (c) => c.repeat())
+                                    .moveX(begin: 0, end: -40, duration: 3500.ms, curve: Curves.easeInOut)
+                                    .then()
+                                    .moveX(begin: -40, end: 0, duration: 3500.ms, curve: Curves.easeInOut),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Center(
+                          child: Text(
+                            'Creating...',
+                            style: GoogleFonts.outfit(
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ).animate(onPlay: (c) => c.repeat()).shimmer(
+                                duration: const Duration(seconds: 2),
+                                color: Colors.white,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -631,65 +830,105 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   Widget _buildThickMessageBubble(ChatMessage message) {
     final isUser = message.isUser;
+    final isGameCreatedMessage = !isUser && (message.text.contains('Game created') || message.text.contains('Game updated'));
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        mainAxisAlignment: isUser
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!isUser) ...[
-            _buildAvatar(isUser: false),
-            const SizedBox(width: 12),
-          ],
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: isUser
-                    ? const Color(0xFF5576F8)
-                    : const Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(24),
-                  topRight: const Radius.circular(24),
-                  bottomLeft: Radius.circular(isUser ? 24 : 6),
-                  bottomRight: Radius.circular(isUser ? 6 : 24),
-                ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: isUser
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
+            children: [
+              if (!isUser) ...[
+                _buildAvatar(isUser: false),
+                const SizedBox(width: 12),
+              ],
+              if (isUser)
+                const Spacer(flex: 1),
+              Flexible(
+                flex: 3,
+                child: isUser
+                    ? Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E1E1E),
+                          borderRadius: BorderRadius.only(
+                            topLeft: const Radius.circular(20),
+                            topRight: const Radius.circular(6),
+                            bottomLeft: const Radius.circular(20),
+                            bottomRight: const Radius.circular(20),
+                          ),
+                        ),
+                        child: Text(
+                          message.text,
+                          style: GoogleFonts.outfit(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            height: 1.45,
+                          ),
+                        ),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            message.text,
+                            style: GoogleFonts.outfit(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w400,
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (!isUser)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Text(
-                        "Game AI",
-                        style: GoogleFonts.outfit(
-                          color: const Color(0xFFAAAAAA),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+            ],
+          ),
+          // Show 9:16 preview card for game created messages
+          if (isGameCreatedMessage && _generatedHtml.isNotEmpty)
+            Transform.translate(
+              offset: const Offset(0, -8),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 56),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: GestureDetector(
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      setState(() {
+                        _isPreviewMode = true;
+                      });
+                    },
+                    child: Container(
+                      width: 160,
+                      height: 284, // 9:16 aspect ratio
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1A1A),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Stack(
+                          children: [
+                            // Actual game preview
+                            if (_webViewController != null)
+                              IgnorePointer(
+                                child: WebViewWidget(controller: _webViewController!),
+                              ),
+                          ],
                         ),
                       ),
                     ),
-                  Text(
-                    message.text,
-                    style: GoogleFonts.outfit(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      height: 1.5,
-                    ),
                   ),
-                ],
+                ),
               ),
             ),
-          ),
-          if (isUser) ...[
-            const SizedBox(width: 12),
-            _buildAvatar(isUser: true),
-          ],
         ],
       ),
     );
@@ -1022,6 +1261,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
                       fontWeight: FontWeight.w500,
                     ),
                     border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
                   ),

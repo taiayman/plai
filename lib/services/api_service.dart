@@ -535,4 +535,99 @@ class ApiService {
       return [];
     }
   }
+
+  /// Get comments for a game
+  Future<List<Map<String, dynamic>>> getComments(String gameId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/games/$gameId/comments'),
+        headers: {
+          'App-Secret': _appSecret,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data['comments'] ?? []);
+      }
+      return [];
+    } catch (e) {
+      print('Error fetching comments: $e');
+      return [];
+    }
+  }
+
+  /// Post a comment
+  Future<Map<String, dynamic>> postComment(String gameId, String text, {String? parentId}) async {
+    if (_currentUser == null) {
+      throw Exception('User must be logged in to comment');
+    }
+
+    try {
+      final body = {
+        'userId': _currentUser!.id,
+        'text': text,
+      };
+      if (parentId != null) {
+        body['parentId'] = parentId;
+      }
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl/games/$gameId/comments'),
+        headers: {
+          'Content-Type': 'application/json',
+          'App-Secret': _appSecret,
+        },
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to post comment: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Network error posting comment: $e');
+    }
+  }
+
+  /// Like a comment
+  Future<void> likeComment(String gameId, String commentId) async {
+    if (_currentUser == null) return;
+
+    try {
+      await http.post(
+        Uri.parse('$_baseUrl/games/$gameId/comments/$commentId/like'),
+        headers: {
+          'Content-Type': 'application/json',
+          'App-Secret': _appSecret,
+        },
+        body: jsonEncode({
+          'userId': _currentUser!.id,
+        }),
+      );
+    } catch (e) {
+      print('Error liking comment: $e');
+    }
+  }
+
+  /// Unlike a comment
+  Future<void> unlikeComment(String gameId, String commentId) async {
+    if (_currentUser == null) return;
+
+    try {
+      await http.post(
+        Uri.parse('$_baseUrl/games/$gameId/comments/$commentId/unlike'),
+        headers: {
+          'Content-Type': 'application/json',
+          'App-Secret': _appSecret,
+        },
+        body: jsonEncode({
+          'userId': _currentUser!.id,
+        }),
+      );
+    } catch (e) {
+      print('Error unliking comment: $e');
+    }
+  }
 }

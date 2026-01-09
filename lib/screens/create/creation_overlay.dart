@@ -62,6 +62,8 @@ class CreationOverlay extends StatelessWidget {
                           hintText: 'Describe your game idea...',
                           hintStyle: TextStyle(color: AppColors.textMuted),
                           border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
                         ),
                       ),
                     ),

@@ -141,6 +141,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     _games[index] = _games[index].copyWith(isSaved: isSaved);
                     setState(() {});
                   },
+                  onCommentAdded: () {
+                    _games[index] = _games[index].copyWith(
+                      commentCount: _games[index].commentCount + 1,
+                    );
+                    setState(() {});
+                  },
                 );
               },
             ),

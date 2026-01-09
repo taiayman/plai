@@ -34,6 +34,17 @@ export default {
                 return await handleGeminiGeneration(request, env, corsHeaders);
             }
 
+            // Route: Tenor GIF - Featured
+            if (path === "/tenor/featured" && request.method === "GET") {
+                return await handleTenorFeatured(env, corsHeaders);
+            }
+
+            // Route: Tenor GIF - Search
+            if (path === "/tenor/search" && request.method === "GET") {
+                const query = url.searchParams.get("q") || "";
+                return await handleTenorSearch(env, corsHeaders, query);
+            }
+
             // Route: Auth (Anonymous Login)
             if (path === "/auth/guest" && request.method === "POST") {
                 return await handleGuestLogin(env, corsHeaders);
@@ -76,11 +87,30 @@ export default {
             if (path.startsWith("/games/") && request.method === "POST") {
                 const parts = path.split("/");
                 const gameId = parts[2];
-                const action = parts[3]; // 'like' or 'view'
+                const action = parts[3]; // 'like', 'view', or 'comments'
 
                 if (action === "like" || action === "view") {
                     return await handleGameAction(env, corsHeaders, gameId, action);
                 }
+                if (action === "comments") {
+                    // Check if it's a comment like/unlike: /games/:gameId/comments/:commentId/like or /unlike
+                    const commentId = parts[4];
+                    const commentAction = parts[5];
+                    if (commentId && commentAction === "like") {
+                        return await handleCommentLike(request, env, corsHeaders, gameId, commentId);
+                    }
+                    if (commentId && commentAction === "unlike") {
+                        return await handleCommentUnlike(request, env, corsHeaders, gameId, commentId);
+                    }
+                    // Otherwise it's posting a new comment
+                    return await handlePostComment(request, env, corsHeaders, gameId);
+                }
+            }
+
+            // Route: Get Comments for a game
+            if (path.match(/\/games\/.+\/comments$/) && request.method === "GET") {
+                const gameId = path.split("/")[2];
+                return await handleGetComments(env, corsHeaders, gameId);
             }
 
             // Route: Get Notifications (mock for now - would require proper notification system)
@@ -158,19 +188,43 @@ export default {
 
 // --- Handlers ---
 
+async function handleTenorFeatured(env, corsHeaders) {
+    const response = await fetch(
+        `https://tenor.googleapis.com/v2/featured?key=${env.TENOR_API_KEY}&limit=30&media_filter=gif`
+    );
+    const data = await response.json();
+    return new Response(JSON.stringify(data), {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+}
+
+async function handleTenorSearch(env, corsHeaders, query) {
+    const response = await fetch(
+        `https://tenor.googleapis.com/v2/search?key=${env.TENOR_API_KEY}&q=${encodeURIComponent(query)}&limit=30&media_filter=gif`
+    );
+    const data = await response.json();
+    return new Response(JSON.stringify(data), {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+}
+
 async function handleGeminiGeneration(request, env, corsHeaders) {
     const requestBody = await request.json();
     const googlePayload = {
         contents: requestBody.history,
         generationConfig: {
-            thinkingConfig: { thinkingLevel: "MINIMAL" },
+            thinkingConfig: {
+                thinkingLevel: "high",
+                includeThoughts: true
+            },
             temperature: 0.7,
             maxOutputTokens: 8192,
         }
     };
 
+    // Use streaming endpoint with SSE
     const googleResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:streamGenerateContent?key=${env.GEMINI_API_KEY}&alt=sse`,
         {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -178,9 +232,22 @@ async function handleGeminiGeneration(request, env, corsHeaders) {
         }
     );
 
-    const data = await googleResponse.json();
-    return new Response(JSON.stringify(data), {
-        headers: { "Content-Type": "application/json", ...corsHeaders },
+    if (!googleResponse.ok) {
+        const errorText = await googleResponse.text();
+        return new Response(JSON.stringify({ error: errorText }), {
+            status: googleResponse.status,
+            headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+    }
+
+    // Forward the SSE stream directly to client
+    return new Response(googleResponse.body, {
+        headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            ...corsHeaders
+        },
     });
 }
 
@@ -505,6 +572,165 @@ async function handleGetNotifications(corsHeaders) {
     ];
 
     return new Response(JSON.stringify({ notifications }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+}
+
+async function handleGetComments(env, corsHeaders, gameId) {
+    const projectId = env.FIREBASE_PROJECT_ID;
+    // Get comments for a specific game from the comments subcollection
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/games/${gameId}/comments?pageSize=100`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    let comments = [];
+    if (data.documents) {
+        comments = data.documents.map(doc => fromFirestoreDoc(doc));
+    }
+
+    return new Response(JSON.stringify({ comments }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+}
+
+async function handlePostComment(request, env, corsHeaders, gameId) {
+    const { userId, text, parentId } = await request.json();
+    const projectId = env.FIREBASE_PROJECT_ID;
+
+    // First, get user data for the comment
+    const userUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${userId}`;
+    const userResponse = await fetch(userUrl);
+    const userData = await userResponse.json();
+    const user = userData.fields ? fromFirestoreDoc(userData) : null;
+
+    const commentData = {
+        userId: userId,
+        username: user?.username || 'Anonymous',
+        displayName: user?.displayName || 'Anonymous',
+        profilePicture: user?.profilePicture || `https://api.dicebear.com/7.x/avataaars/png?seed=${userId}`,
+        text: text,
+        likeCount: 0,
+        createdAt: new Date().toISOString()
+    };
+
+    // Add parentId if this is a reply
+    if (parentId) {
+        commentData.parentId = parentId;
+    }
+
+    // Create comment in the game's comments subcollection
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/games/${gameId}/comments`;
+
+    const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: toFirestoreFields(commentData) })
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+        throw new Error(data.error.message);
+    }
+
+    // Increment commentCount on the game
+    const incrementUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`;
+    await fetch(incrementUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            writes: [{
+                transform: {
+                    document: `projects/${projectId}/databases/(default)/documents/games/${gameId}`,
+                    fieldTransforms: [{
+                        fieldPath: "commentCount",
+                        increment: { integerValue: "1" }
+                    }]
+                }
+            }]
+        })
+    });
+
+    return new Response(JSON.stringify(fromFirestoreDoc(data)), {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+}
+
+async function handleCommentLike(request, env, corsHeaders, gameId, commentId) {
+    const { userId } = await request.json();
+    const projectId = env.FIREBASE_PROJECT_ID;
+    const commentDocPath = `projects/${projectId}/databases/(default)/documents/games/${gameId}/comments/${commentId}`;
+
+    // Use a transaction-like approach: add userId to likedBy array and increment count
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`;
+
+    await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            writes: [
+                {
+                    transform: {
+                        document: commentDocPath,
+                        fieldTransforms: [
+                            {
+                                fieldPath: "likeCount",
+                                increment: { integerValue: "1" }
+                            },
+                            {
+                                fieldPath: "likedBy",
+                                appendMissingElements: {
+                                    values: [{ stringValue: userId }]
+                                }
+                            }
+                        ]
+                    }
+                }
+            ]
+        })
+    });
+
+    return new Response(JSON.stringify({ success: true }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+}
+
+async function handleCommentUnlike(request, env, corsHeaders, gameId, commentId) {
+    const { userId } = await request.json();
+    const projectId = env.FIREBASE_PROJECT_ID;
+    const commentDocPath = `projects/${projectId}/databases/(default)/documents/games/${gameId}/comments/${commentId}`;
+
+    // Decrement count and remove userId from likedBy array
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`;
+
+    await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            writes: [
+                {
+                    transform: {
+                        document: commentDocPath,
+                        fieldTransforms: [
+                            {
+                                fieldPath: "likeCount",
+                                increment: { integerValue: "-1" }
+                            },
+                            {
+                                fieldPath: "likedBy",
+                                removeAllFromArray: {
+                                    values: [{ stringValue: userId }]
+                                }
+                            }
+                        ]
+                    }
+                }
+            ]
+        })
+    });
+
+    return new Response(JSON.stringify({ success: true }), {
         headers: { "Content-Type": "application/json", ...corsHeaders },
     });
 }

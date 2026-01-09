@@ -288,7 +288,7 @@ class _AuthModalState extends State<AuthModal> {
                   ],
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -343,7 +343,7 @@ class _AuthModalState extends State<AuthModal> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: Color(0xFF5576F8), width: 1.5),
+              borderSide: BorderSide.none,
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),

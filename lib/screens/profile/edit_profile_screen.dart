@@ -231,6 +231,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             cursorColor: AppColors.accentPrimary,
             decoration: const InputDecoration(
               border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
               contentPadding: EdgeInsets.all(16),
             ),
           ),

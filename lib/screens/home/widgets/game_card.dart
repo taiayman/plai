@@ -14,6 +14,7 @@ class GameCard extends StatefulWidget {
   final ValueChanged<bool>? onLikeChanged;
   final ValueChanged<bool>? onSaveChanged;
   final ValueChanged<bool>? onInteractionChanged;
+  final VoidCallback? onCommentAdded;
 
   const GameCard({
     super.key,
@@ -23,6 +24,7 @@ class GameCard extends StatefulWidget {
     this.onLikeChanged,
     this.onSaveChanged,
     this.onInteractionChanged,
+    this.onCommentAdded,
   });
 
   @override
@@ -93,7 +95,10 @@ class _GameCardState extends State<GameCard>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => CommentsSheet(game: widget.game),
+      builder: (context) => CommentsSheet(
+        game: widget.game,
+        onCommentAdded: widget.onCommentAdded,
+      ),
     );
   }
 
