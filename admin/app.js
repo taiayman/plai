@@ -116,19 +116,48 @@ class AdminApp {
         // Mobile menu toggle
         const mobileMenuBtn = document.getElementById('mobile-menu-btn');
         const sidebar = document.getElementById('sidebar');
+        const backdrop = document.getElementById('sidebar-backdrop');
+
+        const closeSidebar = () => {
+            sidebar.classList.remove('open');
+            backdrop.classList.remove('active');
+            document.body.style.overflow = '';
+        };
+
+        const openSidebar = () => {
+            sidebar.classList.add('open');
+            backdrop.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        };
 
         if (mobileMenuBtn) {
             mobileMenuBtn.addEventListener('click', () => {
-                sidebar.classList.toggle('open');
+                if (sidebar.classList.contains('open')) {
+                    closeSidebar();
+                } else {
+                    openSidebar();
+                }
             });
+        }
+
+        // Close sidebar when clicking backdrop
+        if (backdrop) {
+            backdrop.addEventListener('click', closeSidebar);
         }
 
         // Close sidebar when clicking outside on mobile
         document.addEventListener('click', (e) => {
             if (window.innerWidth <= 768) {
                 if (!sidebar.contains(e.target) && !mobileMenuBtn.contains(e.target)) {
-                    sidebar.classList.remove('open');
+                    closeSidebar();
                 }
+            }
+        });
+
+        // Handle window resize - close mobile menu if window grows
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 768) {
+                closeSidebar();
             }
         });
 
@@ -149,12 +178,11 @@ class AdminApp {
             });
         }
 
-        // Nav items
+        // Nav items - close mobile sidebar on navigation
         document.querySelectorAll('.nav-item').forEach(item => {
-            item.addEventListener('click', (e) => {
-                // Close mobile sidebar
+            item.addEventListener('click', () => {
                 if (window.innerWidth <= 768) {
-                    sidebar.classList.remove('open');
+                    closeSidebar();
                 }
             });
         });

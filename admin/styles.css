@@ -1381,20 +1381,50 @@ textarea::placeholder {
     .grid-2 {
         grid-template-columns: 1fr;
     }
+
+    .chart-wrapper {
+        height: 250px;
+    }
 }
 
 @media (max-width: 768px) {
     :root {
         --sidebar-width: 0px;
+        --header-height: 56px;
     }
 
+    html {
+        font-size: 15px;
+    }
+
+    /* Sidebar overlay for mobile */
     .sidebar {
         transform: translateX(-100%);
-        width: 260px;
+        width: 280px;
+        box-shadow: var(--shadow-xl);
     }
 
     .sidebar.open {
         transform: translateX(0);
+    }
+
+    /* Sidebar overlay backdrop */
+    .sidebar-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: calc(var(--z-sidebar) - 1);
+        opacity: 0;
+        visibility: hidden;
+        transition: all var(--transition-normal);
+    }
+
+    .sidebar-backdrop.active {
+        opacity: 1;
+        visibility: visible;
     }
 
     .mobile-menu-btn {
@@ -1405,32 +1435,422 @@ textarea::placeholder {
         margin-left: 0;
     }
 
+    /* Header mobile adjustments */
+    .header {
+        padding: 0 var(--spacing-md);
+    }
+
+    .page-title {
+        font-size: 1.1rem;
+    }
+
+    .header-user {
+        padding: var(--spacing-xs) var(--spacing-sm);
+    }
+
+    .user-name {
+        display: none;
+    }
+
+    .user-avatar {
+        width: 28px;
+        height: 28px;
+        font-size: 0.75rem;
+    }
+
+    /* Content area mobile */
     .content-area {
         padding: var(--spacing-md);
+    }
+
+    /* Stats grid mobile - 2 columns on tablet, 1 on phone */
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-md);
+    }
+
+    .stat-card {
+        padding: var(--spacing-md);
+    }
+
+    .stat-icon {
+        width: 40px;
+        height: 40px;
+        margin-bottom: var(--spacing-sm);
+    }
+
+    .stat-icon svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+    }
+
+    .stat-label {
+        font-size: 0.75rem;
+    }
+
+    /* Charts mobile */
+    .chart-container {
+        padding: var(--spacing-md);
+        margin-bottom: var(--spacing-md);
+    }
+
+    .chart-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+        margin-bottom: var(--spacing-md);
+    }
+
+    .chart-wrapper {
+        height: 200px;
+    }
+
+    /* Grid layouts mobile */
+    .grid-4,
+    .grid-3,
+    .grid-2 {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-md);
+    }
+
+    /* Table mobile adjustments */
+    .table-container {
+        border-radius: var(--radius-md);
+    }
+
+    .table-header {
+        flex-direction: column;
+        align-items: stretch;
+        padding: var(--spacing-md);
+        gap: var(--spacing-sm);
+    }
+
+    .table-title {
+        font-size: 1rem;
+    }
+
+    .table-actions {
+        flex-wrap: wrap;
+    }
+
+    .table-scroll {
+        margin: 0 calc(-1 * var(--spacing-md));
+        padding: 0 var(--spacing-md);
+    }
+
+    th, td {
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-size: 0.8rem;
+    }
+
+    .table-footer {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+        text-align: center;
+    }
+
+    /* User row in tables */
+    .user-row {
+        gap: var(--spacing-sm);
+    }
+
+    .avatar {
+        width: 32px;
+        height: 32px;
+    }
+
+    .user-info .username {
+        font-size: 0.85rem;
+    }
+
+    .user-info .email {
+        font-size: 0.7rem;
+    }
+
+    /* Game thumbnail */
+    .game-thumb {
+        width: 48px;
+        height: 64px;
+    }
+
+    /* Buttons mobile */
+    .btn {
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-size: 0.8rem;
+    }
+
+    .btn-sm {
+        padding: 6px var(--spacing-sm);
+        font-size: 0.7rem;
+    }
+
+    .btn-icon {
+        width: 36px;
+        height: 36px;
+    }
+
+    .btn-icon svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    /* Modals mobile */
+    .modal-overlay {
+        padding: var(--spacing-md);
+        align-items: flex-end;
+    }
+
+    .modal {
+        max-width: 100%;
+        max-height: 85vh;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        animation: slideUpMobile 0.3s ease;
+    }
+
+    .modal.game-modal,
+    .modal.user-modal {
+        max-width: 100%;
+    }
+
+    .modal-header {
+        padding: var(--spacing-md);
+    }
+
+    .modal-body {
+        padding: var(--spacing-md);
+    }
+
+    .modal-footer {
+        padding: var(--spacing-md);
+        flex-direction: column;
+    }
+
+    .modal-footer .btn {
+        width: 100%;
+    }
+
+    /* Game preview mobile */
+    .game-preview-container {
+        max-height: 50vh;
+    }
+
+    .game-info {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-sm);
+    }
+
+    /* Toast mobile */
+    .toast-container {
+        left: var(--spacing-md);
+        right: var(--spacing-md);
+        bottom: var(--spacing-md);
+    }
+
+    .toast {
+        min-width: auto;
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    /* Form elements mobile */
+    .form-group {
+        margin-bottom: var(--spacing-sm);
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="search"],
+    input[type="number"],
+    textarea,
+    select {
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-size: 16px; /* Prevents iOS zoom on focus */
+    }
+
+    .search-input input {
+        padding-left: 40px;
+    }
+
+    /* Filter chips mobile */
+    .filter-chips {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: var(--spacing-sm);
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .chip {
+        flex-shrink: 0;
+        padding: 6px var(--spacing-md);
+        font-size: 0.8rem;
+    }
+
+    /* Pagination mobile */
+    .pagination {
+        justify-content: center;
+    }
+
+    .pagination button {
+        width: 32px;
+        height: 32px;
+        font-size: 0.8rem;
+    }
+
+    /* Activity feed mobile */
+    .activity-item {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    .activity-icon {
+        width: 32px;
+        height: 32px;
+    }
+
+    .activity-icon svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .activity-content p {
+        font-size: 0.8rem;
+    }
+
+    /* Badges mobile */
+    .badge {
+        padding: 3px 8px;
+        font-size: 0.7rem;
+    }
+
+    /* Login modal mobile */
+    .login-modal {
+        border-radius: var(--radius-lg);
+        align-self: center;
+    }
+
+    .login-modal .modal-body {
+        padding: var(--spacing-md) var(--spacing-lg);
+    }
+}
+
+/* Small phones (< 480px) */
+@media (max-width: 480px) {
+    html {
+        font-size: 14px;
     }
 
     .stats-grid {
         grid-template-columns: 1fr;
     }
 
-    .grid-4,
-    .grid-3,
-    .grid-2 {
-        grid-template-columns: 1fr;
+    .stat-card {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
     }
 
-    .table-header {
-        flex-direction: column;
-        align-items: stretch;
+    .stat-icon {
+        margin-bottom: 0;
     }
 
-    .toast-container {
-        left: var(--spacing-md);
-        right: var(--spacing-md);
+    .stat-content {
+        flex: 1;
     }
 
-    .toast {
-        min-width: auto;
+    .header-left {
+        gap: var(--spacing-sm);
+    }
+
+    .page-title {
+        font-size: 1rem;
+    }
+
+    /* Hide less important table columns on small screens */
+    .hide-mobile {
+        display: none !important;
+    }
+
+    .chart-wrapper {
+        height: 180px;
+    }
+
+    /* Stack modal footer buttons */
+    .modal-footer {
+        gap: var(--spacing-sm);
+    }
+
+    /* Compact nav items */
+    .nav-item {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+}
+
+/* Animation for mobile modals */
+@keyframes slideUpMobile {
+    from {
+        opacity: 0;
+        transform: translateY(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Touch-friendly improvements */
+@media (hover: none) and (pointer: coarse) {
+    .btn,
+    .nav-item,
+    .chip,
+    .toggle,
+    .pagination button {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    .nav-item {
+        padding: var(--spacing-md);
+    }
+
+    .chip {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    /* Remove hover effects on touch devices */
+    .card:hover {
+        transform: none;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        transform: none;
+    }
+
+    /* Add active states instead */
+    .btn:active {
+        transform: scale(0.98);
+    }
+
+    .card:active {
+        transform: scale(0.99);
+    }
+}
+
+/* Landscape phone orientation */
+@media (max-width: 896px) and (orientation: landscape) {
+    .modal-overlay {
+        align-items: center;
+    }
+
+    .modal {
+        max-height: 90vh;
+        border-radius: var(--radius-lg);
+    }
+
+    .game-preview-container {
+        max-height: 40vh;
     }
 }
 
