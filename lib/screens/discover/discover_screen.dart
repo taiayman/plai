@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:developer' as developer;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../data/mock_data.dart';
 import '../../data/models/game_model.dart';
 import '../../services/api_service.dart';
 import '../../widgets/game_thumbnail.dart';
+import '../main_scaffold.dart';
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -36,7 +38,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         });
       }
     } catch (e) {
-      print("Error loading discover data: $e");
+      developer.log("Error loading discover data: $e");
       if (mounted) {
         setState(() {
           _games = MockData.games; // Fallback
@@ -162,7 +164,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                           : ListView.separated(
                               scrollDirection: Axis.horizontal,
                               itemCount: _games.isNotEmpty ? _games.length : 0,
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (context, index) =>
                                   const SizedBox(width: 12),
                               itemBuilder: (_, i) =>
                                   _buildTrendingCard(_games[i % _games.length]),
@@ -229,7 +231,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   Widget _buildTrendingCard(GameModel game) {
-    return Container(
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.mediumImpact();
+        MainScaffold.of(context)?.navigateToFeed(game);
+      },
+      child: Container(
       width: 112, // Width for 9:16 aspect ratio (200 / 16 * 9 = 112.5)
       height: 200,
       decoration: BoxDecoration(
@@ -283,7 +290,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withOpacity(0.9)],
+                    colors: [Colors.transparent, Colors.black.withValues(alpha: 0.9)],
                   ),
                 ),
               ),
@@ -314,6 +321,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -339,7 +347,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   Widget _buildGameCard(GameModel game) {
-    return Container(
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.mediumImpact();
+        MainScaffold.of(context)?.navigateToFeed(game);
+      },
+      child: Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -429,6 +442,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 }

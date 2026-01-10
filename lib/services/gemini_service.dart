@@ -66,15 +66,7 @@ class GeminiService {
         {'text': systemPrompt},
       ],
     });
-    _chatHistory.add({
-      'role': 'model',
-      'parts': [
-        {
-          'text':
-              'I understand. I will generate complete HTML5 games as requested.',
-        },
-      ],
-    });
+    // Optimization: Removed redundant model confirmation ("I understand") to save tokens.
   }
 
   /// Generate game code with real-time streaming of thoughts.
@@ -86,12 +78,19 @@ class GeminiService {
     }
 
     // Add user message to history
-    _chatHistory.add({
-      'role': 'user',
-      'parts': [
-        {'text': prompt},
-      ],
-    });
+    // Check if the last message was also from the user (e.g. system prompt)
+    // If so, merge them to avoid "User, User" sequence which some API versions reject.
+    if (_chatHistory.isNotEmpty && _chatHistory.last['role'] == 'user') {
+      final lastParts = _chatHistory.last['parts'] as List<dynamic>;
+      lastParts.add({'text': "\n\n" + prompt});
+    } else {
+      _chatHistory.add({
+        'role': 'user',
+        'parts': [
+          {'text': prompt},
+        ],
+      });
+    }
 
     final client = http.Client();
 
@@ -203,6 +202,19 @@ class GeminiService {
     String userRequest, {
     List<GameAsset>? assets,
   }) async* {
+    // Optimization: Reset history to avoid token bloat.
+    // The refinement prompt already contains the full current state (HTML).
+    _chatHistory.clear();
+
+    // Add system prompt again to ensure the model knows its role/constraints
+    final systemPrompt = GamePromptBuilder.buildSystemPrompt(assets: assets);
+    _chatHistory.add({
+      'role': 'user',
+      'parts': [
+        {'text': systemPrompt},
+      ],
+    });
+
     final prompt = GamePromptBuilder.buildRefinementPrompt(
       currentHtml,
       userRequest,

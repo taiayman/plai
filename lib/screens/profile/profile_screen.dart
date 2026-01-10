@@ -8,6 +8,7 @@ import '../../services/api_service.dart';
 import '../../widgets/game_thumbnail.dart';
 import '../auth/auth_modal.dart';
 import 'edit_profile_screen.dart';
+import '../main_scaffold.dart';
 import 'settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -39,7 +40,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // Fetch user's games
         _userGames = await ApiService().getUserGames(_user!.id);
       } catch (e) {
-        print('Error loading user games: $e');
+        debugPrint('Error loading user games: $e');
       }
     }
 
@@ -453,17 +454,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return GestureDetector(
       onTap: () {
         HapticFeedback.mediumImpact();
-        // TODO: Navigate to game view or show in fullscreen
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Playing: ${game.title}',
-              style: GoogleFonts.outfit(color: Colors.white),
-            ),
-            backgroundColor: const Color(0xFF1E1E1E),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        // Navigate to main feed and play this game
+        MainScaffold.of(context)?.navigateToFeed(game);
       },
       child: Container(
         width: cardWidth,

@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:ui';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:image_picker/image_picker.dart';
 import 'post_game_screen.dart';
 import '../../services/gemini_service.dart';
@@ -13,6 +13,8 @@ import '../../services/game_generation_state.dart';
 import '../../services/api_service.dart';
 import '../../widgets/gif_picker_sheet.dart';
 import '../../widgets/sound_picker_sheet.dart';
+import '../../utils/game_html_processor.dart';
+
 import '../auth/auth_modal.dart';
 
 class AiChatScreen extends StatefulWidget {
@@ -102,8 +104,26 @@ class _AiChatScreenState extends State<AiChatScreen> {
     _fakeThinkingTimer = null;
   }
 
-  WebViewController? _webViewController;
-  WebViewController? _thumbnailWebViewController;
+  // InAppWebView settings for high-performance game rendering
+  final InAppWebViewSettings _webViewSettings = InAppWebViewSettings(
+    javaScriptEnabled: true,
+    mediaPlaybackRequiresUserGesture: false,
+    allowsInlineMediaPlayback: true,
+    useHybridComposition: true,
+    hardwareAcceleration: true,
+    supportZoom: false,
+    verticalScrollBarEnabled: false,
+    horizontalScrollBarEnabled: false,
+    disableContextMenu: true,
+    useWideViewPort: false,
+    loadWithOverviewMode: false,
+    builtInZoomControls: false,
+    displayZoomControls: false,
+    useShouldOverrideUrlLoading: false,
+    transparentBackground: true,
+  );
+
+  InAppWebViewController? _webViewController;
 
   @override
   void initState() {
@@ -221,81 +241,16 @@ class _AiChatScreenState extends State<AiChatScreen> {
     }
   }
 
+  /// Wrap HTML to ensure it works properly in WebView
+  String _wrapHtmlForWebView(String html) {
+    return GameHtmlProcessor.process(html);
+  }
+
   void _initWebViewController(String html) {
-    _webViewController = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.black)
-      ..loadHtmlString(html);
-
-    // Create a scaled version for thumbnail preview
-    _initThumbnailWebViewController(html);
-  }
-
-  void _initThumbnailWebViewController(String html) {
-    // Inject CSS to ensure game renders at proper dimensions for thumbnail
-    // The WebView will handle scaling the content to fit the container
-    final scaledHtml = html.replaceFirst('<head>', '''<head>
-    <meta name="viewport" content="width=360, height=640, initial-scale=1, user-scalable=no">
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body {
-        width: 360px !important;
-        height: 640px !important;
-        overflow: hidden !important;
-        background: #000 !important;
-      }
-      /* Hide scrollbars */
-      ::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
-      * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
-      #game-container, .game-container, [class*="container"] {
-        width: 360px !important;
-        height: 640px !important;
-      }
-      canvas {
-        display: block !important;
-        max-width: 360px !important;
-        max-height: 640px !important;
-      }
-    </style>''');
-
-    _thumbnailWebViewController = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.black)
-      ..loadHtmlString(scaledHtml);
-  }
-
-  /// Create a scaled WebViewController for a specific HTML
-  /// Thumbnail container is 160x284, game content is designed for 360x640 (9:16)
-  WebViewController _createThumbnailController(String html) {
-    // Inject CSS to ensure game renders at proper dimensions for thumbnail
-    final scaledHtml = html.replaceFirst('<head>', '''<head>
-    <meta name="viewport" content="width=360, height=640, initial-scale=1, user-scalable=no">
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body {
-        width: 360px !important;
-        height: 640px !important;
-        overflow: hidden !important;
-        background: #000 !important;
-      }
-      /* Hide scrollbars */
-      ::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
-      * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
-      #game-container, .game-container, [class*="container"] {
-        width: 360px !important;
-        height: 640px !important;
-      }
-      canvas {
-        display: block !important;
-        max-width: 360px !important;
-        max-height: 640px !important;
-      }
-    </style>''');
-
-    return WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.black)
-      ..loadHtmlString(scaledHtml);
+    // We used to wrap HTML here, but now we keep _generatedHtml RAW
+    // and only wrap it when passing to the WebView in _buildGamePreview.
+    // This ensures we don't send injected scripts back to the AI during refinement.
+    setState(() {});
   }
 
   Future<void> _refineGame(String request) async {
@@ -680,14 +635,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (isLocked) ...[
-              Icon(
-                Icons.lock_rounded,
-                size: 12,
-                color: const Color(0xFF555555),
-              ),
-              const SizedBox(width: 4),
-            ],
             Text(
               label,
               style: GoogleFonts.outfit(
@@ -1068,10 +1015,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: _GameThumbnail(
-                          html: message.gameHtml!,
-                          createController: _createThumbnailController,
-                        ),
+                        child: _GameThumbnail(html: message.gameHtml!),
                       ),
                     ),
                   ),
@@ -1168,50 +1112,102 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
     return Column(
       children: [
-        // Hint bar to ask AI for modifications
-        GestureDetector(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            setState(() {
-              _isPreviewMode = false;
-            });
-          },
-          child: Container(
-            width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: const Color(0xFF5576F8).withOpacity(0.3),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.auto_fix_high_rounded,
-                  color: const Color(0xFF5576F8),
-                  size: 18,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Any issues? Ask AI to fix or modify the game',
-                    style: GoogleFonts.outfit(
-                      color: const Color(0xFFAAAAAA),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
+        // Action bar with hint and copy button
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          child: Row(
+            children: [
+              // Hint to ask AI
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() {
+                      _isPreviewMode = false;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E1E1E),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: const Color(0xFF5576F8).withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.auto_fix_high_rounded,
+                          color: const Color(0xFF5576F8),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Ask AI to modify',
+                            style: GoogleFonts.outfit(
+                              color: const Color(0xFFAAAAAA),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          color: const Color(0xFF666666),
+                          size: 14,
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  color: const Color(0xFF666666),
-                  size: 14,
+              ),
+              const SizedBox(width: 8),
+              // Copy code button
+              GestureDetector(
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: _generatedHtml));
+                  HapticFeedback.mediumImpact();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle,
+                            color: Color(0xFF25D366),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'HTML copied to clipboard!',
+                            style: GoogleFonts.outfit(color: Colors.white),
+                          ),
+                        ],
+                      ),
+                      backgroundColor: const Color(0xFF1E1E1E),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E1E),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(
+                    Icons.code_rounded,
+                    color: const Color(0xFFAAAAAA),
+                    size: 20,
+                  ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
         // Game preview
@@ -1226,13 +1222,42 @@ class _AiChatScreenState extends State<AiChatScreen> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(30),
-              child: _webViewController != null
-                  ? WebViewWidget(controller: _webViewController!)
-                  : const Center(
-                      child: CircularProgressIndicator(
-                        color: Color(0xFF5576F8),
-                      ),
-                    ),
+              child: InAppWebView(
+                key: ValueKey(_generatedHtml.hashCode),
+                initialSettings: _webViewSettings,
+                initialData: InAppWebViewInitialData(
+                  data: _wrapHtmlForWebView(_generatedHtml), // Process it here for display
+                  mimeType: 'text/html',
+                  encoding: 'utf-8',
+                ),
+                onWebViewCreated: (controller) {
+                  _webViewController = controller;
+                },
+                onConsoleMessage: (controller, consoleMessage) {
+                  // Debug: print JS console messages
+                  print('WebView Console: ${consoleMessage.message}');
+                },
+                onLoadStart: (controller, url) {
+                  print('WebView: Load started');
+                },
+                onLoadStop: (controller, url) async {
+                  print('WebView: Load finished');
+                  // Just log dimensions - the polyfill should have fixed them
+                  final result = await controller.evaluateJavascript(
+                    source: '''
+                    (function() {
+                      var canvas = document.querySelector('canvas');
+                      return 'Window: ' + window.innerWidth + 'x' + window.innerHeight +
+                             ', Canvas: ' + (canvas ? canvas.width + 'x' + canvas.height : 'none');
+                    })();
+                  ''',
+                  );
+                  print('WebView: $result');
+                },
+                onLoadError: (controller, url, code, message) {
+                  print('WebView Error: $code - $message');
+                },
+              ),
             ),
           ),
         ),
@@ -1587,34 +1612,34 @@ class ChatMessage {
   ChatMessage({required this.text, required this.isUser, this.gameHtml});
 }
 
-/// Stateful widget to manage its own WebViewController for each thumbnail
-class _GameThumbnail extends StatefulWidget {
+/// Stateful widget to manage its own InAppWebView for each thumbnail
+class _GameThumbnail extends StatelessWidget {
   final String html;
-  final WebViewController Function(String) createController;
 
-  const _GameThumbnail({required this.html, required this.createController});
+  const _GameThumbnail({required this.html});
 
-  @override
-  State<_GameThumbnail> createState() => _GameThumbnailState();
-}
+  String _prepareHtmlForThumbnail() {
+    // Inject CSS for fixed 360x640 rendering
+    if (!html.contains('<head>')) return html;
 
-class _GameThumbnailState extends State<_GameThumbnail> {
-  WebViewController? _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = widget.createController(widget.html);
+    return html.replaceFirst('<head>', '''<head>
+    <meta name="viewport" content="width=360, height=640, initial-scale=1, user-scalable=no">
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 360px !important;
+        height: 640px !important;
+        overflow: hidden !important;
+        background: #000 !important;
+      }
+      ::-webkit-scrollbar { display: none !important; }
+      canvas { display: block !important; }
+    </style>''');
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_controller == null) {
-      return Container(color: Colors.black);
-    }
-
     // Scale factor: thumbnail is 160x284, game is 360x640
-    // 160/360 = 0.444
     const double scale = 0.444;
 
     return ClipRect(
@@ -1629,7 +1654,23 @@ class _GameThumbnailState extends State<_GameThumbnail> {
             width: 360,
             height: 640,
             child: IgnorePointer(
-              child: WebViewWidget(controller: _controller!),
+              child: InAppWebView(
+                initialData: InAppWebViewInitialData(
+                  data: _prepareHtmlForThumbnail(),
+                  mimeType: 'text/html',
+                  encoding: 'utf-8',
+                ),
+                initialSettings: InAppWebViewSettings(
+                  javaScriptEnabled: true,
+                  hardwareAcceleration: true,
+                  useHybridComposition: true,
+                  supportZoom: false,
+                  verticalScrollBarEnabled: false,
+                  horizontalScrollBarEnabled: false,
+                  disableContextMenu: true,
+                  transparentBackground: true,
+                ),
+              ),
             ),
           ),
         ),

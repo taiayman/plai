@@ -316,12 +316,6 @@ class ApiService {
       throw Exception('User must be logged in to create a game');
     }
 
-    // Debug logging
-    print('DEBUG createGame: title = ${game.title}');
-    print('DEBUG createGame: creator id = ${_currentUser!.id}');
-    print('DEBUG createGame: creator username = ${_currentUser!.username}');
-    print('DEBUG createGame: htmlContent length = ${htmlContent.length}');
-
     // Prepare game data
     final gameData = {
       'title': game.title,

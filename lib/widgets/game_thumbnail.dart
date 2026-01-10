@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import '../utils/game_html_processor.dart';
 
 /// A reusable widget that displays a game HTML as a scaled thumbnail preview.
-/// Uses WebView to render the actual game content scaled down to fit the container.
+/// Uses InAppWebView to render the actual game content scaled down to fit the container.
 class GameThumbnail extends StatefulWidget {
   /// The HTML content of the game to display
   final String gameHtml;
@@ -29,76 +30,43 @@ class GameThumbnail extends StatefulWidget {
 }
 
 class _GameThumbnailState extends State<GameThumbnail> {
-  WebViewController? _controller;
   bool _isReady = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _initController();
-  }
+  // Reference game dimensions (9:16 aspect ratio)
+  static const double gameWidth = 360;
+  static const double gameHeight = 640;
 
-  void _initController() {
-    // Reference game dimensions (9:16 aspect ratio)
-    const double gameWidth = 360;
-    const double gameHeight = 640;
+  final InAppWebViewSettings _webViewSettings = InAppWebViewSettings(
+    javaScriptEnabled: true,
+    hardwareAcceleration: true,
+    useHybridComposition: true,
+    supportZoom: false,
+    verticalScrollBarEnabled: false,
+    horizontalScrollBarEnabled: false,
+    disableContextMenu: true,
+    transparentBackground: true,
+  );
 
+  String _prepareHtml() {
     // Inject CSS to ensure proper rendering and hide scrollbars
-    final scaledHtml = widget.gameHtml.replaceFirst('<head>', '''<head>
-    <meta name="viewport" content="width=$gameWidth, height=$gameHeight, initial-scale=1, user-scalable=no">
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body {
-        width: ${gameWidth}px !important;
-        height: ${gameHeight}px !important;
-        overflow: hidden !important;
-        background: #000 !important;
-      }
-      /* Hide scrollbars */
-      ::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
-      * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
-      #game-container, .game-container, [class*="container"] {
-        width: ${gameWidth}px !important;
-        height: ${gameHeight}px !important;
-      }
-      canvas {
-        display: block !important;
-        max-width: ${gameWidth}px !important;
-        max-height: ${gameHeight}px !important;
-      }
-    </style>''');
+    // Also use the processor but maybe disable the BIG debug overlay for thumbnails
+    // or keep it if we want to debug thumbnails too. Let's disable it for clean look.
+    String processed = GameHtmlProcessor.process(
+      widget.gameHtml,
+      showDebugOverlay: false,
+    );
 
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.black)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageFinished: (_) {
-            if (mounted) {
-              setState(() => _isReady = true);
-            }
-          },
-        ),
-      )
-      ..loadHtmlString(scaledHtml);
+    // Additional thumbnail-specific styles
+    return processed.replaceFirst('<head>', '''<head>
+    <style>
+      ::-webkit-scrollbar { display: none !important; }
+    </style>''');
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_controller == null) {
-      return Container(
-        width: widget.width,
-        height: widget.height,
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(widget.borderRadius),
-        ),
-      );
-    }
-
     // Calculate scale factor based on container size
-    // Reference game is 360x640, scale to fit container
-    final double scale = widget.width / 360;
+    final double scale = widget.width / gameWidth;
 
     return Container(
       width: widget.width,
@@ -114,16 +82,28 @@ class _GameThumbnailState extends State<GameThumbnail> {
             ClipRect(
               child: OverflowBox(
                 alignment: Alignment.topLeft,
-                maxWidth: 360,
-                maxHeight: 640,
+                maxWidth: gameWidth,
+                maxHeight: gameHeight,
                 child: Transform.scale(
                   scale: scale,
                   alignment: Alignment.topLeft,
                   child: SizedBox(
-                    width: 360,
-                    height: 640,
+                    width: gameWidth,
+                    height: gameHeight,
                     child: IgnorePointer(
-                      child: WebViewWidget(controller: _controller!),
+                      child: InAppWebView(
+                        initialSettings: _webViewSettings,
+                        initialData: InAppWebViewInitialData(
+                          data: _prepareHtml(),
+                          mimeType: 'text/html',
+                          encoding: 'utf-8',
+                        ),
+                        onLoadStop: (controller, url) {
+                          if (mounted) {
+                            setState(() => _isReady = true);
+                          }
+                        },
+                      ),
                     ),
                   ),
                 ),

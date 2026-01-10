@@ -6,24 +6,44 @@ import 'discover/discover_screen.dart';
 import 'create/create_screen.dart';
 import 'inbox/inbox_screen.dart';
 import 'profile/profile_screen.dart';
+import '../../data/models/game_model.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
 
+  static MainScaffoldState? of(BuildContext context) {
+    return context.findAncestorStateOfType<MainScaffoldState>();
+  }
+
   @override
-  State<MainScaffold> createState() => _MainScaffoldState();
+  State<MainScaffold> createState() => MainScaffoldState();
 }
 
-class _MainScaffoldState extends State<MainScaffold> {
+class MainScaffoldState extends State<MainScaffold> {
   int _currentIndex = 0;
+  final GlobalKey<HomeScreenState> _homeScreenKey = GlobalKey();
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    DiscoverScreen(),
-    SizedBox(), // Placeholder - Create navigates separately
-    InboxScreen(),
-    ProfileScreen(),
-  ];
+  late final List<Widget> _screens;
+
+  @override
+  void initState() {
+    super.initState();
+    _screens = [
+      HomeScreen(key: _homeScreenKey),
+      const DiscoverScreen(),
+      const SizedBox(), // Placeholder - Create navigates separately
+      const InboxScreen(),
+      const ProfileScreen(),
+    ];
+  }
+
+  void navigateToFeed(GameModel game) {
+    setState(() => _currentIndex = 0);
+    // Slight delay to ensure HomeScreen is built and active
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _homeScreenKey.currentState?.playGame(game);
+    });
+  }
 
   void _onTabTapped(int index) {
     if (index == 2) {

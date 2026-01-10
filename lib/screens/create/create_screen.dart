@@ -71,7 +71,7 @@ class _CreateScreenState extends State<CreateScreen> {
         HapticFeedback.mediumImpact();
       }
     } catch (e) {
-      print('Error picking image: $e');
+      debugPrint('Error picking image: $e');
     }
   }
 

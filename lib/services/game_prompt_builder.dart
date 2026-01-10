@@ -4,35 +4,40 @@ class GamePromptBuilder {
   static String buildSystemPrompt({List<GameAsset>? assets}) {
     final assetsSection = assets != null && assets.isNotEmpty
         ? '''
-
-USER-PROVIDED ASSETS:
-The user has provided the following assets to use in the game. You MUST incorporate them:
-${assets.map((a) => '- ${a.type.toUpperCase()}: "${a.name}" - URL: ${a.url}').join('\n')}
-
-For IMAGES/GIFs: Use them as sprites, backgrounds, or game elements with <img> tags or by drawing on canvas.
-For SOUNDS: Use the Audio API to play them at appropriate moments (e.g., collect sound, jump, game over).
-
-Example for loading an image:
-const img = new Image();
-img.src = 'THE_URL_HERE';
-img.onload = () => { /* use in game */ };
-
-Example for playing sound:
-const sound = new Audio('THE_URL_HERE');
-sound.play();
+Assets to use:
+${assets.map((a) => '- ${a.type} ("${a.name}"): ${a.url}').join('\n')}
 '''
         : '';
 
     return '''
-You are an HTML5 game developer. Output a complete playable game in a single HTML file.
+HTML5 Game. Single File.
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&display=swap" rel="stylesheet">
 
-HTML5 Canvas. requestAnimationFrame. Include SFX (Web Audio API or Audio elements). Full screen: body{margin:0;overflow:hidden;background:#000;touch-action:none}canvas{display:block;width:100%;height:100%}
+STYLE GUIDELINES (MANDATORY):
+1. FONT: Use 'Luckiest Guy', cursive. WHITE text with BLACK outline (text-stroke: 2px black).
+2. UI: Clean, flat, rounded. NO gradients, NO default buttons.
+3. ART: High-quality emojis or crisp shapes. NO blurry/messy drawing.
+4. SFX: Use AudioContext. CRITICAL: Wrap ALL audio calls in try-catch. Audio MUST NOT crash the game.
+5. LIBS: Use cdnjs.com for Three.js (3D) or Matter.js (Physics) IF requested.
+6. 3D: For Three.js, camera.fov must be ~75 but logic MUST handle aspect < 1 (Portrait) by moving camera BACK or widening FOV. Canvas must fill 100% height.
+   - NO external textures (jpg/png). Use simple Colors or generated Canvas textures.
+   - MUST add AmbientLight AND DirectionalLight.
+7. GIFS: Async fetch url -> new Image() -> draw in loop only when loaded. API: `https://my-chat-helper.taiayman13-ed6.workers.dev/tenor/search?q=KEYWORD`.
+8. 3D CONTROLS: Virtual Joystick (Left) + Jump (Right). SWIPE screen to rotate Camera/Look.
+9. SPAWN: Disable player gravity for first 3s. Start Y=5 above ground. Prevent infinite fall loops.
+10. UI LAYOUT: Keep all UI inside 90% width centered. Use `bottom: 100px` to clear home bar.
+
+TECH SPECS:
+- Body: margin:0, overflow:hidden. Canvas: 100vw/100vh.
+- Resize: Update canvas.width/height on window resize.
+- Input: touchstart/mousedown = ACTION. touchend/mouseup = END.
+- Critical: preventDefault() on CANVAS touches only. Allow UI clicks.
+- Logic: Relative positioning (w*0.5).
+- Loop: NEVER stop the loop on errors. Log errors to console only.
+
 $assetsSection
-\`\`\`html
-<!DOCTYPE html>
-<html>
-</html>
-\`\`\`
+Output VALID HTML ONLY in ```html``` block.
 ''';
   }
 
@@ -42,22 +47,18 @@ $assetsSection
     String userRequest, {
     List<GameAsset>? assets,
   }) {
-    final assetsSection = assets != null && assets.isNotEmpty
-        ? '''
-
-AVAILABLE ASSETS (use these if relevant to the request):
-${assets.map((a) => '- ${a.type.toUpperCase()}: "${a.name}" - URL: ${a.url}').join('\n')}
-'''
-        : '';
+    // Optimization: Don't send assets again if they are already in the HTML
+    // We only attach new assets or if specifically needed.
+    // For now, we'll keep it simple but the prompt below is shorter.
 
     return '''
-Modify this game:
-
-\`\`\`html
+Current Game:
+```html
 $currentHtml
-\`\`\`
-$assetsSection
-$userRequest
+```
+
+Task: $userRequest
+Output FULL updated HTML.
 ''';
   }
 
@@ -66,12 +67,7 @@ $userRequest
     String userDescription, {
     List<GameAsset>? assets,
   }) {
-    final assetsNote = assets != null && assets.isNotEmpty
-        ? '\n\nThe user has provided assets to use. Make sure to incorporate them into the game.'
-        : '';
-
-    return '''"$userDescription"$assetsNote
-''';
+    return userDescription;
   }
 }
 

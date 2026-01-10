@@ -235,11 +235,6 @@ class _PostGameScreenState extends State<PostGameScreen> {
                           try {
                             final currentUser = ApiService().currentUser;
 
-                            // Debug: Check if user and gameHtml exist
-                            print('DEBUG PostGame: currentUser = ${currentUser?.username}');
-                            print('DEBUG PostGame: gameHtml length = ${widget.gameHtml?.length ?? 0}');
-                            print('DEBUG PostGame: title = ${_titleController.text.trim()}');
-
                             if (currentUser == null) {
                               throw Exception('You must be logged in to post a game');
                             }

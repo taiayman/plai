@@ -11,10 +11,10 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class HomeScreenState extends State<HomeScreen> {
   late PageController _pageController;
   List<GameModel> _games = [];
   int _currentPage = 0;
@@ -52,7 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _isLoading = false;
         _isRefreshing = false;
       });
-      print("Error loading games: $e");
+      debugPrint("Error loading games: $e");
     }
   }
 
@@ -60,6 +60,29 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isRefreshing = true);
     HapticFeedback.mediumImpact();
     await _loadGames();
+  }
+
+  void playGame(GameModel game) {
+    // If game is already in the list, just jump to it
+    final index = _games.indexWhere((g) => g.id == game.id);
+    if (index != -1) {
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(index);
+      }
+      return;
+    }
+
+    // Otherwise, insert it at the top and jump to it
+    setState(() {
+      _games.insert(0, game);
+    });
+
+    // Slight delay to allow build to update before jumping
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(0);
+      }
+    });
   }
 
   @override
@@ -162,7 +185,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: _refreshGames,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: _isRefreshing
                         ? const Color(0xFF5576F8).withOpacity(0.2)
@@ -215,18 +241,18 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E1E),
-                  borderRadius: BorderRadius.circular(32),
-                ),
-                child: const Icon(
-                  Icons.sports_esports_rounded,
-                  color: Color(0xFF5576F8),
-                  size: 56,
-                ),
-              )
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E1E1E),
+                      borderRadius: BorderRadius.circular(32),
+                    ),
+                    child: const Icon(
+                      Icons.sports_esports_rounded,
+                      color: Color(0xFF5576F8),
+                      size: 56,
+                    ),
+                  )
                   .animate(onPlay: (c) => c.repeat(reverse: true))
                   .scale(
                     begin: const Offset(1, 1),
@@ -256,7 +282,10 @@ class _HomeScreenState extends State<HomeScreen> {
               GestureDetector(
                 onTap: _refreshGames,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1E1E1E),
                     borderRadius: BorderRadius.circular(16),

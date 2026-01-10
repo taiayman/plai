@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&display=swap" rel="stylesheet">
+    <title>Tap The Black!</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #f0f0f0;
+            font-family: 'Luckiest Guy', cursive;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            background: #fff;
+        }
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .text {
+            color: white;
+            -webkit-text-stroke: 2px black;
+            text-align: center;
+            line-height: 1;
+        }
+        #score-display {
+            position: absolute;
+            top: 20px;
+            font-size: 48px;
+            z-index: 10;
+        }
+        #menu {
+            pointer-events: auto;
+            background: rgba(0,0,0,0.2);
+            padding: 40px;
+            border-radius: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .btn {
+            background: #ff4757;
+            padding: 15px 40px;
+            border-radius: 15px;
+            font-size: 32px;
+            cursor: pointer;
+            border: none;
+            transition: transform 0.1s;
+        }
+        .btn:active { transform: scale(0.95); }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div id="score-display" class="text">0</div>
+        
+        <div id="menu">
+            <h1 class="text" style="font-size: 60px; margin: 0 0 10px 0;">TAP BLACK</h1>
+            <p id="high-score" class="text" style="font-size: 24px; margin-bottom: 20px;">HIGH SCORE: 0</p>
+            <div id="start-btn" class="btn text">START</div>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+/** @type {HTMLCanvasElement} */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score-display');
+const menu = document.getElementById('menu');
+const startBtn = document.getElementById('start-btn');
+const highScoreEl = document.getElementById('high-score');
+
+// Audio Engine
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playSound(freq, type, duration) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+}
+
+const SFX = {
+    tap: () => playSound(440, 'sine', 0.1),
+    fail: () => playSound(150, 'sawtooth', 0.3),
+    start: () => playSound(880, 'sine', 0.1)
+};
+
+// Game State
+let gameState = 'MENU';
+let score = 0;
+let highScore = localStorage.getItem('tapblack_highscore') || 0;
+let tiles = [];
+let speed = 0;
+let cols = 4;
+let tileW, tileH;
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    tileW = canvas.width / cols;
+    tileH = canvas.height / 4;
+}
+window.addEventListener('resize', resize);
+resize();
+
+highScoreEl.innerText = `HIGH SCORE: ${highScore}`;
+
+class Tile {
+    constructor(row, col, isTarget) {
+        this.col = col;
+        this.row = row; // index in the screen vertical space
+        this.isTarget = isTarget;
+        this.y = row * tileH;
+        this.tapped = false;
+        this.missed = false;
+    }
+
+    draw() {
+        ctx.fillStyle = this.isTarget ? (this.tapped ? '#ccc' : '#2f3542') : '#ffffff';
+        ctx.strokeStyle = '#dfe4ea';
+        ctx.lineWidth = 2;
+        
+        ctx.fillRect(this.col * tileW, this.y, tileW, tileH);
+        ctx.strokeRect(this.col * tileW, this.y, tileW, tileH);
+        
+        if (this.missed) {
+            ctx.fillStyle = '#ff4757';
+            ctx.fillRect(this.col * tileW, this.y, tileW, tileH);
+        }
+    }
+
+    update(dt) {
+        this.y += speed * dt;
+    }
+}
+
+function spawnRow(rowYIndex) {
+    const targetCol = Math.floor(Math.random() * cols);
+    for (let c = 0; c < cols; c++) {
+        tiles.push(new Tile(rowYIndex, c, c === targetCol));
+    }
+}
+
+function initGame() {
+    score = 0;
+    speed = canvas.height * 0.5;
+    tiles = [];
+    scoreEl.innerText = score;
+    // Pre-populate tiles
+    for (let i = -1; i < 4; i++) {
+        spawnRow(i);
+    }
+    gameState = 'PLAYING';
+    menu.classList.add('hidden');
+    SFX.start();
+}
+
+function gameOver() {
+    if (gameState === 'GAMEOVER') return;
+    gameState = 'GAMEOVER';
+    SFX.fail();
+    if (score > highScore) {
+        highScore = score;
+        localStorage.setItem('tapblack_highscore', highScore);
+    }
+    highScoreEl.innerText = `HIGH SCORE: ${highScore}`;
+    setTimeout(() => {
+        menu.classList.remove('hidden');
+    }, 500);
+}
+
+function handleInput(e) {
+    if (gameState !== 'PLAYING') return;
+    e.preventDefault();
+    
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    const clickedCol = Math.floor(x / tileW);
+    
+    // Find the lowest untapped target tile
+    const targetTiles = tiles.filter(t => t.isTarget && !t.tapped).sort((a,b) => b.y - a.y);
+    const lowestTarget = targetTiles[0];
+
+    if (!lowestTarget) return;
+
+    // Logic: Must tap the correct column AND it must be within a reasonable hit area
+    // Simplified for mobile: tap the column of the lowest target.
+    const hitTile = tiles.find(t => 
+        x >= t.col * tileW && x < (t.col + 1) * tileW &&
+        y >= t.y && y < t.y + tileH
+    );
+
+    if (hitTile) {
+        if (hitTile.isTarget && !hitTile.tapped) {
+            // Check if it's the lowest one to prevent skipping
+            if (hitTile === lowestTarget) {
+                hitTile.tapped = true;
+                score++;
+                scoreEl.innerText = score;
+                speed += 5; // Difficulty curve
+                SFX.tap();
+            } else {
+                hitTile.missed = true;
+                gameOver();
+            }
+        } else if (!hitTile.isTarget) {
+            hitTile.missed = true;
+            gameOver();
+        }
+    }
+}
+
+canvas.addEventListener('touchstart', handleInput, {passive: false});
+canvas.addEventListener('mousedown', handleInput);
+startBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    initGame();
+});
+
+let lastTime = 0;
+function loop(timestamp) {
+    const dt = (timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (gameState === 'PLAYING' || gameState === 'GAMEOVER') {
+        tiles.forEach(t => {
+            if (gameState === 'PLAYING') t.update(dt);
+            t.draw();
+        });
+
+        // Remove off-screen tiles
+        if (tiles.length > 0 && tiles[0].y > canvas.height) {
+            // If we remove a target tile that wasn't tapped, game over
+            const passedRow = tiles.splice(0, cols);
+            if (passedRow.some(t => t.isTarget && !t.tapped)) {
+                passedRow.find(t => t.isTarget).missed = true;
+                gameOver();
+            }
+        }
+
+        // Spawn new tiles
+        if (tiles.length > 0 && tiles[tiles.length - 1].y > 0) {
+            spawnRow(-1);
+        }
+    }
+
+    requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

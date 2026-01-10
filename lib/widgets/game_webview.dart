@@ -1,13 +1,13 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import '../utils/game_html_processor.dart';
 
 class GameWebViewController {
-  WebViewController? _webViewController;
+  InAppWebViewController? _webViewController;
 
-  void _attach(WebViewController controller) {
+  void _attach(InAppWebViewController controller) {
     _webViewController = controller;
   }
 
@@ -16,8 +16,9 @@ class GameWebViewController {
   }
 
   void setControlState(String key, bool isPressed) {
-    _webViewController?.runJavaScript(
-      'window.setControlState && window.setControlState("$key", $isPressed)',
+    _webViewController?.evaluateJavascript(
+      source:
+          'window.setControlState && window.setControlState("$key", $isPressed)',
     );
   }
 }
@@ -41,76 +42,53 @@ class GameWebView extends StatefulWidget {
 }
 
 class _GameWebViewState extends State<GameWebView> {
-  late final WebViewController _controller;
+  InAppWebViewController? _controller;
   bool _isReady = false;
-  bool _isControlPressed = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _initController();
-    widget.controller?._attach(_controller);
-  }
+  // High-performance settings for game rendering
+  final InAppWebViewSettings _webViewSettings = InAppWebViewSettings(
+    javaScriptEnabled: true,
+    mediaPlaybackRequiresUserGesture: false,
+    allowsInlineMediaPlayback: true,
+    useHybridComposition: true,
+    hardwareAcceleration: true,
+    supportZoom: false,
+    verticalScrollBarEnabled: false,
+    horizontalScrollBarEnabled: false,
+    disableContextMenu: true,
+    useWideViewPort: false,
+    loadWithOverviewMode: false,
+    builtInZoomControls: false,
+    displayZoomControls: false,
+    useShouldOverrideUrlLoading: false,
+    transparentBackground: false,
+    domStorageEnabled: true, // Enable LocalStorage
+    allowFileAccessFromFileURLs: true,
+    allowUniversalAccessFromFileURLs: true,
+  );
 
   @override
   void didUpdateWidget(GameWebView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.controller != oldWidget.controller) {
       oldWidget.controller?._detach();
-      widget.controller?._attach(_controller);
-    }
-    if (widget.isActive != oldWidget.isActive && _isReady) {
-      if (widget.isActive) {
-        _controller.runJavaScript('window.resumeGame && window.resumeGame();');
-      } else {
-        _controller.runJavaScript('window.pauseGame && window.pauseGame();');
+      if (_controller != null) {
+        widget.controller?._attach(_controller!);
       }
     }
-  }
-
-  void _initController() {
-    _controller = WebViewController();
-
-    _controller
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFF1a1a2e))
-      ..addJavaScriptChannel(
-        'GameControl',
-        onMessageReceived: (message) {
-          final isPressed = message.message == 'pressed';
-          if (_isControlPressed != isPressed) {
-            _isControlPressed = isPressed;
-            widget.onInteractionChanged?.call(isPressed);
-          }
-        },
-      )
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageFinished: (_) {
-            if (mounted) {
-              setState(() => _isReady = true);
-            }
-          },
-        ),
-      );
-
-    if (Platform.isAndroid) {
-      final androidController =
-          _controller.platform as AndroidWebViewController;
-      androidController.setMediaPlaybackRequiresUserGesture(false);
+    if (widget.isActive != oldWidget.isActive &&
+        _isReady &&
+        _controller != null) {
+      if (widget.isActive) {
+        _controller!.evaluateJavascript(
+          source: 'window.resumeGame && window.resumeGame();',
+        );
+      } else {
+        _controller!.evaluateJavascript(
+          source: 'window.pauseGame && window.pauseGame();',
+        );
+      }
     }
-
-    // Enable gesture navigation to allow scrolling inside the game if needed
-    // but the PageView handles vertical swipe for feed navigation.
-    // To allow game interaction we rely on GameControl channel or tap events.
-
-    // Create a wrapper to capture touches for the feed
-    // In the future we might want to inject JS to capture touch start/end
-    // and communicate with Flutter to disable feed scrolling.
-
-    // Load the actual game HTML or fallback to demo
-    final htmlToLoad = widget.gameHtml ?? _defaultGameHtml;
-    _controller.loadHtmlString(htmlToLoad);
   }
 
   @override
@@ -163,40 +141,68 @@ class _GameWebViewState extends State<GameWebView> {
 
   @override
   Widget build(BuildContext context) {
-    // We wrap the WebView in a GestureDetector to allow it to receive touches
-    // The PageView in HomeScreen uses `_isGameInteracting` to decide whether to scroll.
-    // Since we removed the overlay buttons, users interact directly with the WebView.
-    // We need to ensure touches are passed to the WebView but we also might need
-    // to detect when the user wants to scroll the feed.
-    //
-    // For now, we assume simple tap/drag games.
-    // We can use a listener to detect touch down/up to lock the feed.
+    final rawHtml = widget.gameHtml ?? _defaultGameHtml;
+    // Process HTML to ensure it works on mobile
+    final htmlToLoad = GameHtmlProcessor.process(rawHtml);
 
     return Listener(
       onPointerDown: (_) {
         widget.onInteractionChanged?.call(true);
       },
       onPointerUp: (_) {
-         // Optional: delay releasing the lock or keep it until a specific action
-         // For many games (flappy bird style), we might want to keep it locked
-         // while the game is "active". But for simple taps, maybe not.
-         // Let's keep it simple: Touch down locks, Touch up unlocks after a delay?
-         // Actually, for "drag" games, we need it locked during the drag.
-
-         // If we unlock immediately on up, swipe gestures might still trigger page view.
-         // Let's just pass the interaction state.
-
-         // A better UX might be:
-         // 1. Long press to lock/unlock feed?
-         // 2. Or just rely on the fact that if they are touching the game, they are playing.
-
-         // Let's try unlocking on pointer up.
-         widget.onInteractionChanged?.call(false);
+        widget.onInteractionChanged?.call(false);
       },
       onPointerCancel: (_) {
         widget.onInteractionChanged?.call(false);
       },
-      child: WebViewWidget(controller: _controller),
+      child: InAppWebView(
+        gestureRecognizers: {
+          Factory<OneSequenceGestureRecognizer>(
+            () => EagerGestureRecognizer(),
+          ),
+        },
+        initialSettings: _webViewSettings,
+        initialData: InAppWebViewInitialData(
+          data: htmlToLoad,
+          mimeType: 'text/html',
+          encoding: 'utf-8',
+        ),
+        onWebViewCreated: (controller) {
+          _controller = controller;
+          widget.controller?._attach(controller);
+
+          // Add JavaScript channel for game control
+          controller.addJavaScriptHandler(
+            handlerName: 'GameControl',
+            callback: (args) {
+              if (args.isNotEmpty) {
+                final isPressed = args[0] == 'pressed';
+                widget.onInteractionChanged?.call(isPressed);
+              }
+              return null;
+            },
+          );
+        },
+        onConsoleMessage: (controller, consoleMessage) {
+          debugPrint('GAME JS: \${consoleMessage.message}');
+        },
+        onLoadStop: (controller, url) async {
+          if (mounted) {
+            setState(() => _isReady = true);
+          }
+          // Trigger resize for canvas games
+          await controller.evaluateJavascript(
+            source: '''
+            (function() {
+              if (typeof resize === 'function') {
+                try { resize(); } catch(e) {}
+              }
+              window.dispatchEvent(new Event('resize'));
+            })();
+          ''',
+          );
+        },
+      ),
     );
   }
 }

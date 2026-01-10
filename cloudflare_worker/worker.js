@@ -28,7 +28,7 @@ export default {
                 });
             }
 
-            // Route: Generate Game (Gemini)
+            // Route: Generate Game (Gemini - UPDATED TO BEAST MODE)
             // Support both /generate and root / (for backward compatibility if needed)
             if ((path === "/generate" || path === "/") && request.method === "POST") {
                 return await handleGeminiGeneration(request, env, corsHeaders);
@@ -208,23 +208,30 @@ async function handleTenorSearch(env, corsHeaders, query) {
     });
 }
 
+// --- UPDATED BEAST GEMINI HANDLER ---
 async function handleGeminiGeneration(request, env, corsHeaders) {
     const requestBody = await request.json();
+
+    // Configuration EXACTLY as requested by user
+    // Mimicking the @google/genai SDK structure
     const googlePayload = {
         contents: requestBody.history,
         generationConfig: {
             thinkingConfig: {
-                thinkingLevel: "low",
-                includeThoughts: true
-            },
-            temperature: 1,
-            maxOutputTokens: 8192,
+                thinkingLevel: "MINIMAL"
+            }
         }
     };
 
+    // Construct the URL exactly for the requested model
+    // SDK uses: models.generateContentStream -> POST /models/{model}:streamGenerateContent
+    const model = "gemini-3-flash-preview";
+    const apiKey = env.GEMINI_API_KEY;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${apiKey}&alt=sse`;
+
     // Use streaming endpoint with SSE
     const googleResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:streamGenerateContent?key=${env.GEMINI_API_KEY}&alt=sse`,
+        url,
         {
             method: "POST",
             headers: { "Content-Type": "application/json" },
