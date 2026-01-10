@@ -223,6 +223,50 @@ class GeminiService {
     yield* generateGameStream(prompt);
   }
 
+  /// Apply AI-generated patches to the original HTML.
+  static String applyPatchesToHtml(String originalHtml, String response) {
+    var newHtml = originalHtml;
+    final patchRegex = RegExp(
+      r'<<<<\s*\n(.*?)\n====\s*\n(.*?)\n>>>>',
+      dotAll: true,
+    );
+
+    final matches = patchRegex.allMatches(response);
+    if (matches.isEmpty) {
+      // If no patches found, check if it's a full rewrite
+      final fullHtml = extractHtmlFromResponse(response);
+      return fullHtml.isNotEmpty ? fullHtml : originalHtml;
+    }
+
+    for (final match in matches) {
+      final searchBlock = match.group(1)?.trim() ?? '';
+      final replaceBlock = match.group(2)?.trim() ?? '';
+
+      if (searchBlock.isNotEmpty) {
+        // Try exact match first
+        if (newHtml.contains(searchBlock)) {
+          newHtml = newHtml.replaceFirst(searchBlock, replaceBlock);
+        } else {
+          // Fallback: Try whitespace-insensitive matching using Regex
+          try {
+            final escapedSearch = RegExp.escape(searchBlock).replaceAll(RegExp(r'\s+'), r'\s+');
+            final looseRegex = RegExp(escapedSearch, dotAll: true);
+
+            if (looseRegex.hasMatch(newHtml)) {
+               newHtml = newHtml.replaceFirst(looseRegex, replaceBlock);
+               // print('PATCH: Applied fuzzy match for code block');
+            } else {
+               print('PATCH ERROR: Could not find code block even with fuzzy match:\n$searchBlock');
+            }
+          } catch(e) {
+             print('PATCH ERROR: Regex failed: $e');
+          }
+        }
+      }
+    }
+    return newHtml;
+  }
+
   /// Extract HTML code from a markdown response.
   static String extractHtmlFromResponse(String response) {
     // Try to find HTML code block
@@ -282,6 +326,13 @@ class GeminiService {
         cleanText = cleanText.replaceAll(content, '');
       }
     }
+
+    // Remove Patch Blocks (<<<< ... >>>>)
+    final patchRegex = RegExp(
+      r'<<<<\s*\n.*?\n====\s*\n.*?\n>>>>',
+      dotAll: true,
+    );
+    cleanText = cleanText.replaceAll(patchRegex, '');
 
     // Handle unclosed code blocks (for streaming)
     // If there's an opening backtick sequence that isn't closed, strip everything after it

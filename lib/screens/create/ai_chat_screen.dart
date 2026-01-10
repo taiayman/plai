@@ -330,7 +330,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
       // Stop fake thinking
       _stopFakeThinking();
 
-      final html = GeminiService.extractHtmlFromResponse(_currentStreamingText);
+      // Apply patches OR extract full HTML if provided
+      final html = GeminiService.applyPatchesToHtml(
+        _generatedHtml,
+        _currentStreamingText,
+      );
 
       setState(() {
         if (html.isNotEmpty) {
@@ -368,14 +372,22 @@ class _AiChatScreenState extends State<AiChatScreen> {
             }
           });
         }
+
+        final bool hasChanged = html != _generatedHtml;
+        final String messageText = hasChanged
+            ? "✨ Game updated!"
+            : GeminiService.getConversationalText(_currentStreamingText).isEmpty
+                ? "I couldn't apply those changes. Try being more specific."
+                : GeminiService.getConversationalText(_currentStreamingText);
+
         _messages.add(
           ChatMessage(
-            text: html.isNotEmpty ? "✨ Game updated!" : _currentStreamingText,
+            text: messageText,
             isUser: false,
-            gameHtml: html.isNotEmpty ? html : null,
+            gameHtml: hasChanged ? html : null,
           ),
         );
-        _generationState = html.isNotEmpty
+        _generationState = hasChanged
             ? GameGenerationState.preview
             : GameGenerationState.idle;
         _currentStreamingText = '';

@@ -51,7 +51,6 @@ Output VALID HTML ONLY in ```html``` block.
   }) {
     // Optimization: Don't send assets again if they are already in the HTML
     // We only attach new assets or if specifically needed.
-    // For now, we'll keep it simple but the prompt below is shorter.
 
     return '''
 Current Game:
@@ -60,7 +59,22 @@ $currentHtml
 ```
 
 Task: $userRequest
-Output FULL updated HTML.
+
+CRITICAL INSTRUCTION: DO NOT OUTPUT FULL HTML.
+Output ONLY the changes using this exact format:
+<<<<
+Code to find (exact match)
+====
+Code to replace with
+>>>>
+
+You can output multiple blocks.
+Example:
+<<<<
+ctx.fillStyle = 'red';
+====
+ctx.fillStyle = 'blue';
+>>>>
 ''';
   }
 
