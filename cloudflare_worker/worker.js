@@ -118,6 +118,11 @@ export default {
                 return await handleGetNotifications(corsHeaders);
             }
 
+            // Route: Upload Asset (Image/Audio)
+            if (path === "/assets/upload" && request.method === "POST") {
+                return await handleAssetUpload(request, env, corsHeaders);
+            }
+
             // ==========================================
             // ADMIN ROUTES
             // ==========================================
@@ -579,6 +584,63 @@ async function handleGetNotifications(corsHeaders) {
     ];
 
     return new Response(JSON.stringify({ notifications }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+}
+
+async function handleAssetUpload(request, env, corsHeaders) {
+    // 1. Get file data (expecting raw bytes or base64 in body, or FormData)
+    // For simplicity with Flutter http.post, we'll assume JSON body with base64
+    // or direct binary if Content-Type matches.
+    // Let's support JSON with { name, type, data_base64 }
+
+    const { name, type, data_base64 } = await request.json();
+    const projectId = env.FIREBASE_PROJECT_ID;
+    const bucketName = env.FIREBASE_STORAGE_BUCKET || `${projectId}.appspot.com`;
+
+    // 2. Prepare path
+    const timestamp = Date.now();
+    const fileName = `uploads/${timestamp}_${name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+    const storageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o?name=${encodeURIComponent(fileName)}`;
+
+    // 3. Upload to Firebase Storage
+    // We need to convert base64 back to binary if we want to store it efficiently,
+    // or just store it. Firebase REST API expects raw bytes in body.
+
+    // Cloudflare Workers built-in atob
+    const binaryString = atob(data_base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    const response = await fetch(storageUrl, {
+        method: "POST",
+        headers: {
+            "Content-Type": type,
+            // "Authorization": "Bearer ..." // Ideally use service account, but for MVP we might rely on open rules or restricted API key
+        },
+        body: bytes
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+        throw new Error(data.error.message);
+    }
+
+    // 4. Construct Public URL
+    // Firebase Storage Public URL format:
+    // https://firebasestorage.googleapis.com/v0/b/[BUCKET]/o/[NAME]?alt=media&token=[DOWNLOAD_TOKEN]
+    const downloadToken = data.downloadTokens;
+    const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(fileName)}?alt=media&token=${downloadToken}`;
+
+    return new Response(JSON.stringify({
+        success: true,
+        url: publicUrl,
+        name: fileName,
+        type: type
+    }), {
         headers: { "Content-Type": "application/json", ...corsHeaders },
     });
 }

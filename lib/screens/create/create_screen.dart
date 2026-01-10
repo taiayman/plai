@@ -2,14 +2,16 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:typed_data';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../core/theme/app_colors.dart';
 import '../../services/api_service.dart';
 import '../../services/gemini_service.dart';
 import '../../services/game_prompt_builder.dart';
 import '../../widgets/gif_picker_sheet.dart';
-import '../../widgets/sound_picker_sheet.dart';
+// import '../../widgets/sound_picker_sheet.dart'; // Removed as we use file picker now
 import '../auth/auth_modal.dart';
 import 'ai_chat_screen.dart';
 
@@ -54,15 +56,30 @@ class _CreateScreenState extends State<CreateScreen> {
       );
 
       if (image != null) {
+        // Show loading
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Uploading image...'),
+              backgroundColor: Color(0xFF1E1E1E),
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+
         final bytes = await image.readAsBytes();
-        final base64 = 'data:image/png;base64,${base64Encode(bytes)}';
+        final url = await ApiService().uploadAsset(
+          name: image.name,
+          bytes: bytes.toList(),
+          mediaType: 'image/jpeg',
+        );
 
         setState(() {
           _assets.add(
             GameAsset(
               type: 'image',
               name: 'User Image ${_assets.length + 1}',
-              url: base64,
+              url: url,
             ),
           );
           _showInputOptions = false;
@@ -72,6 +89,11 @@ class _CreateScreenState extends State<CreateScreen> {
       }
     } catch (e) {
       debugPrint('Error picking image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload failed: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -95,17 +117,58 @@ class _CreateScreenState extends State<CreateScreen> {
   }
 
   Future<void> _pickSound() async {
-    final sound = await SoundPickerSheet.show(context);
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.audio,
+        withData: true, // Needed to access bytes
+      );
 
-    if (sound != null) {
-      setState(() {
-        _assets.add(
-          GameAsset(type: 'sound', name: sound['name']!, url: sound['url']!),
+      if (result != null) {
+        // Show loading
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Uploading audio...'),
+              backgroundColor: Color(0xFF1E1E1E),
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+
+        final file = result.files.first;
+        final bytes = file.bytes;
+
+        if (bytes != null) {
+          final url = await ApiService().uploadAsset(
+            name: file.name,
+            bytes: bytes.toList(),
+            mediaType: 'audio/mpeg', // Assuming mp3/wav, backend handles it
+          );
+
+          setState(() {
+            _assets.add(
+              GameAsset(
+                type: 'sound',
+                name: file.name,
+                url: url,
+              ),
+            );
+            _showInputOptions = false;
+          });
+
+          HapticFeedback.mediumImpact();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error picking sound: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to upload audio: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
-        _showInputOptions = false;
-      });
-
-      HapticFeedback.mediumImpact();
+      }
     }
   }
 
@@ -237,48 +300,13 @@ class _CreateScreenState extends State<CreateScreen> {
                               ),
                             ),
                           ),
-                          // Input options row (Image, Sound, GIF) - same style as AI chat
-                          AnimatedSize(
-                            duration: const Duration(milliseconds: 200),
-                            child: _showInputOptions
-                                ? Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      16,
-                                      0,
-                                      16,
-                                      12,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        _buildThickOption(
-                                          Icons.image_rounded,
-                                          'Image',
-                                          onTap: _pickImage,
-                                        ),
-                                        const SizedBox(width: 10),
-                                        _buildThickOption(
-                                          Icons.music_note_rounded,
-                                          'Sound',
-                                          onTap: _pickSound,
-                                        ),
-                                        const SizedBox(width: 10),
-                                        _buildThickOption(
-                                          Icons.gif_rounded,
-                                          'GIF',
-                                          onTap: _pickGif,
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                : const SizedBox.shrink(),
-                          ),
 
-                          // Show added assets - same style as AI chat
+                          // Show added assets (Pending)
                           if (_assets.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                               child: SizedBox(
-                                height: 40,
+                                height: 50,
                                 child: ListView.separated(
                                   scrollDirection: Axis.horizontal,
                                   itemCount: _assets.length,
@@ -287,60 +315,100 @@ class _CreateScreenState extends State<CreateScreen> {
                                   itemBuilder: (context, index) {
                                     final asset = _assets[index];
                                     return Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 8,
-                                      ),
+                                      width: 150,
+                                      padding: const EdgeInsets.all(4),
                                       decoration: BoxDecoration(
-                                        color: asset.type == 'sound'
-                                            ? const Color(
-                                                0xFF5576F8,
-                                              ).withOpacity(0.15)
-                                            : const Color(
-                                                0xFF25D366,
-                                              ).withOpacity(0.15),
-                                        borderRadius: BorderRadius.circular(20),
+                                        color: const Color(0xFF252525),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: const Color(0xFF333333)),
                                       ),
                                       child: Row(
-                                        mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Icon(
-                                            asset.type == 'sound'
-                                                ? Icons.music_note
-                                                : asset.type == 'gif'
-                                                ? Icons.gif
-                                                : Icons.image,
-                                            color: asset.type == 'sound'
-                                                ? const Color(0xFF5576F8)
-                                                : const Color(0xFF25D366),
-                                            size: 16,
+                                          Container(
+                                            width: 42,
+                                            height: 42,
+                                            decoration: BoxDecoration(
+                                              color: asset.type == 'sound'
+                                                  ? const Color(0xFF5576F8).withOpacity(0.15)
+                                                  : const Color(0xFF25D366).withOpacity(0.15),
+                                              borderRadius: BorderRadius.circular(8),
+                                              image: asset.type == 'image'
+                                                  ? DecorationImage(
+                                                      image: NetworkImage(asset.url),
+                                                      fit: BoxFit.cover,
+                                                    )
+                                                  : null,
+                                            ),
+                                            child: asset.type != 'image'
+                                                ? Icon(
+                                                    asset.type == 'sound'
+                                                        ? Icons.music_note
+                                                        : Icons.gif,
+                                                    color: asset.type == 'sound'
+                                                        ? const Color(0xFF5576F8)
+                                                        : const Color(0xFF25D366),
+                                                    size: 20,
+                                                  )
+                                                : null,
                                           ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            asset.name.length > 12
-                                                ? '${asset.name.substring(0, 12)}...'
-                                                : asset.name,
-                                            style: GoogleFonts.outfit(
-                                              color: Colors.white,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              asset.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: GoogleFonts.outfit(
+                                                color: Colors.white,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                              ),
                                             ),
                                           ),
-                                          const SizedBox(width: 6),
                                           GestureDetector(
                                             onTap: () => _removeAsset(index),
-                                            child: Icon(
-                                              Icons.close,
-                                              color: Colors.white.withOpacity(
-                                                0.5,
+                                            child: Container(
+                                              padding: const EdgeInsets.all(4),
+                                              child: Icon(
+                                                Icons.close,
+                                                color: Colors.white.withOpacity(0.5),
+                                                size: 16,
                                               ),
-                                              size: 14,
                                             ),
                                           ),
                                         ],
                                       ),
                                     );
                                   },
+                                ),
+                              ),
+                            ),
+
+                          // Input options row (Image, Sound, GIF)
+                          if (_showInputOptions)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
+                                    _buildThickOption(
+                                      Icons.image_rounded,
+                                      'Image',
+                                      onTap: _pickImage,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    _buildThickOption(
+                                      Icons.music_note_rounded,
+                                      'Sound',
+                                      onTap: _pickSound,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    _buildThickOption(
+                                      Icons.gif_rounded,
+                                      'GIF',
+                                      onTap: _pickGif,
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),

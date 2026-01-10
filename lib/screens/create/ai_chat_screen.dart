@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -38,7 +39,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
   final ImagePicker _imagePicker = ImagePicker();
 
   final List<ChatMessage> _messages = [];
-  final List<GameAsset> _assets = []; // User-provided assets
+  final List<GameAsset> _pendingAssets = []; // Assets waiting to be sent
   bool _isPreviewMode = false;
   bool _showInputOptions = false;
   GameGenerationState _generationState = GameGenerationState.idle;
@@ -130,20 +131,30 @@ class _AiChatScreenState extends State<AiChatScreen> {
     super.initState();
     // Initialize with assets from create screen if provided
     if (widget.initialAssets != null && widget.initialAssets!.isNotEmpty) {
-      _assets.addAll(widget.initialAssets!);
+      _pendingAssets.addAll(widget.initialAssets!);
     }
     _initializeAndGenerate();
   }
 
   Future<void> _initializeAndGenerate() async {
-    // Add initial prompt as first message
-    _messages.add(ChatMessage(text: widget.initialPrompt, isUser: true));
+    // Add initial prompt as first message with assets if any
+    _messages.add(
+      ChatMessage(
+        text: widget.initialPrompt,
+        isUser: true,
+        attachments:
+            widget.initialAssets != null && widget.initialAssets!.isNotEmpty
+                ? List.from(widget.initialAssets!)
+                : null,
+      ),
+    );
 
     try {
       // Initialize Gemini service
       await _geminiService.initialize();
+      // Start session with initial assets (if any)
       _geminiService.startNewSession(
-        assets: _assets.isNotEmpty ? _assets : null,
+        assets: widget.initialAssets,
       );
 
       // Start generating
@@ -222,6 +233,37 @@ class _AiChatScreenState extends State<AiChatScreen> {
       if (html.isNotEmpty) {
         _initWebViewController(html);
 
+        // Schedule screenshot capture after a short delay to let canvas render
+        Future.delayed(const Duration(seconds: 2), () async {
+          if (_webViewController != null && mounted) {
+            try {
+              final screenshot = await _webViewController!.takeScreenshot(
+                screenshotConfiguration: ScreenshotConfiguration(
+                  compressFormat: CompressFormat.PNG,
+                  quality: 50, // Low quality for thumbnails is fine
+                ),
+              );
+
+              if (screenshot != null) {
+                setState(() {
+                  // Update the last message with the thumbnail
+                  final lastMsg = _messages.last;
+                  if (lastMsg.gameHtml == html) {
+                    _messages[_messages.length - 1] = ChatMessage(
+                      text: lastMsg.text,
+                      isUser: lastMsg.isUser,
+                      gameHtml: lastMsg.gameHtml,
+                      thumbnailData: screenshot,
+                    );
+                  }
+                });
+              }
+            } catch (e) {
+              print('Thumbnail capture failed: $e');
+            }
+          }
+        });
+
         // Mark free trial as used for anonymous users
         if (!ApiService().isLoggedIn) {
           ApiService().markFreeTrialUsed();
@@ -253,7 +295,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
     setState(() {});
   }
 
-  Future<void> _refineGame(String request) async {
+  Future<void> _refineGame(String request, {List<GameAsset>? assets}) async {
     if (_generatedHtml.isEmpty) {
       _generateGame(request);
       return;
@@ -273,7 +315,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
       await for (final response in _geminiService.refineGameStream(
         _generatedHtml,
         request,
-        assets: _assets.isNotEmpty ? _assets : null,
+        assets: assets,
       )) {
         if (!mounted) return;
 
@@ -294,6 +336,37 @@ class _AiChatScreenState extends State<AiChatScreen> {
         if (html.isNotEmpty) {
           _generatedHtml = html;
           _initWebViewController(html);
+
+          // Capture screenshot for refined game
+          Future.delayed(const Duration(seconds: 2), () async {
+            if (_webViewController != null && mounted) {
+              try {
+                final screenshot = await _webViewController!.takeScreenshot(
+                  screenshotConfiguration: ScreenshotConfiguration(
+                    compressFormat: CompressFormat.PNG,
+                    quality: 50,
+                  ),
+                );
+
+                if (screenshot != null && _messages.isNotEmpty) {
+                  setState(() {
+                    final lastMsg = _messages.last;
+                    // Only update if it's the correct message type
+                    if (!lastMsg.isUser) {
+                      _messages[_messages.length - 1] = ChatMessage(
+                        text: lastMsg.text,
+                        isUser: lastMsg.isUser,
+                        gameHtml: html, // Ensure HTML is updated too
+                        thumbnailData: screenshot,
+                      );
+                    }
+                  });
+                }
+              } catch (e) {
+                print('Refine thumbnail capture failed: $e');
+              }
+            }
+          });
         }
         _messages.add(
           ChatMessage(
@@ -332,18 +405,60 @@ class _AiChatScreenState extends State<AiChatScreen> {
       );
 
       if (image != null) {
-        // For now, we'll use a placeholder approach
-        // In production, you'd upload to Firebase Storage or imgbb
-        // and get a real URL back
-        HapticFeedback.mediumImpact();
-
-        // Show a snackbar that image was added
+        // Show loading indicator
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Image feature coming soon! Use GIFs for now.',
+                'Uploading image...',
                 style: GoogleFonts.outfit(color: Colors.white),
+              ),
+              backgroundColor: const Color(0xFF1E1E1E),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        }
+
+        // Upload to backend
+        final bytes = await image.readAsBytes();
+        final url = await ApiService().uploadAsset(
+          name: image.name,
+          bytes: bytes.toList(),
+          mediaType: 'image/jpeg', // Simple assumption for now
+        );
+
+        setState(() {
+          _pendingAssets.add(
+            GameAsset(
+              type: 'image',
+              name: 'User Image ${_pendingAssets.length + 1}',
+              url: url,
+            ),
+          );
+          _showInputOptions = false;
+        });
+
+        HapticFeedback.mediumImpact();
+
+        // No need to restart session here, we send assets with next message
+        // _geminiService.startNewSession(assets: _assets);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(
+                    Icons.check_circle,
+                    color: Color(0xFF25D366),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Image added! Send message to use it.',
+                    style: GoogleFonts.outfit(color: Colors.white),
+                  ),
+                ],
               ),
               backgroundColor: const Color(0xFF1E1E1E),
               behavior: SnackBarBehavior.floating,
@@ -352,7 +467,18 @@ class _AiChatScreenState extends State<AiChatScreen> {
         }
       }
     } catch (e) {
-      print('Error picking image: $e');
+      print('Error picking/uploading image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to upload image',
+              style: GoogleFonts.outfit(color: Colors.white),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -361,10 +487,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
     if (gifUrl != null && gifUrl.isNotEmpty) {
       setState(() {
-        _assets.add(
+        _pendingAssets.add(
           GameAsset(
             type: 'gif',
-            name: 'User GIF ${_assets.length + 1}',
+            name: 'User GIF ${_pendingAssets.length + 1}',
             url: gifUrl,
           ),
         );
@@ -373,8 +499,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
       HapticFeedback.mediumImpact();
 
-      // Reinitialize session with new assets
-      _geminiService.startNewSession(assets: _assets);
+      // _geminiService.startNewSession(assets: _assets);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -405,17 +530,26 @@ class _AiChatScreenState extends State<AiChatScreen> {
     final sound = await SoundPickerSheet.show(context);
 
     if (sound != null) {
+      String url = sound['url']!;
+      final name = sound['name']!;
+
+      // If it's not a remote URL, we need to upload it (assuming future local picker support)
+      // Currently SoundPickerSheet only returns Mixkit URLs, but good to be future-proof
+      if (!url.startsWith('http')) {
+        // ... upload logic for local files would go here ...
+        // For now, since we only have remote URLs, we use them directly
+      }
+
       setState(() {
-        _assets.add(
-          GameAsset(type: 'sound', name: sound['name']!, url: sound['url']!),
+        _pendingAssets.add(
+          GameAsset(type: 'sound', name: name, url: url),
         );
         _showInputOptions = false;
       });
 
       HapticFeedback.mediumImpact();
 
-      // Reinitialize session with new assets
-      _geminiService.startNewSession(assets: _assets);
+      // _geminiService.startNewSession(assets: _assets);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -429,7 +563,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '"${sound['name']}" added!',
+                  '"$name" added! Send to use.',
                   style: GoogleFonts.outfit(color: Colors.white),
                 ),
               ],
@@ -444,19 +578,27 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   void _removeAsset(int index) {
     setState(() {
-      _assets.removeAt(index);
+      _pendingAssets.removeAt(index);
     });
-    _geminiService.startNewSession(assets: _assets.isNotEmpty ? _assets : null);
+    // _geminiService.startNewSession(assets: _assets.isNotEmpty ? _assets : null);
     HapticFeedback.lightImpact();
   }
 
   void _sendMessage() {
-    if (_messageController.text.trim().isEmpty) return;
+    if (_messageController.text.trim().isEmpty && _pendingAssets.isEmpty) return;
 
     final message = _messageController.text.trim();
+    final assetsToSend = List<GameAsset>.from(_pendingAssets);
 
     setState(() {
-      _messages.add(ChatMessage(text: message, isUser: true));
+      _messages.add(
+        ChatMessage(
+          text: message,
+          isUser: true,
+          attachments: assetsToSend.isNotEmpty ? assetsToSend : null,
+        ),
+      );
+      _pendingAssets.clear(); // Clear pending assets after sending
     });
 
     _messageController.clear();
@@ -464,7 +606,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
     _scrollToBottom();
 
     // Refine or generate based on current state
-    _refineGame(message);
+    _refineGame(message, assets: assetsToSend);
   }
 
   void _scrollToBottom() {
@@ -572,13 +714,33 @@ class _AiChatScreenState extends State<AiChatScreen> {
               }
 
               HapticFeedback.mediumImpact();
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) =>
-                      PostGameScreen(gameHtml: _generatedHtml),
-                ),
-              );
+
+              // Capture screenshot if available
+              Uint8List? screenshot;
+              if (_webViewController != null) {
+                try {
+                  screenshot = await _webViewController!.takeScreenshot(
+                    screenshotConfiguration: ScreenshotConfiguration(
+                      compressFormat: CompressFormat.PNG,
+                      quality: 80,
+                    ),
+                  );
+                } catch (e) {
+                  print('Error taking screenshot: $e');
+                }
+              }
+
+              if (context.mounted) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PostGameScreen(
+                      gameHtml: _generatedHtml,
+                      screenshot: screenshot,
+                    ),
+                  ),
+                );
+              }
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -959,14 +1121,57 @@ class _AiChatScreenState extends State<AiChatScreen> {
                             bottomRight: const Radius.circular(20),
                           ),
                         ),
-                        child: Text(
-                          message.text,
-                          style: GoogleFonts.outfit(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                            height: 1.45,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (message.attachments != null &&
+                                message.attachments!.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: message.attachments!.map((asset) {
+                                    return Container(
+                                      width: 100,
+                                      height: 100,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF2C2C2C),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                            color: const Color(0xFF333333)),
+                                        image: asset.type == 'image'
+                                            ? DecorationImage(
+                                                image: NetworkImage(asset.url),
+                                                fit: BoxFit.cover,
+                                              )
+                                            : null,
+                                      ),
+                                      child: asset.type != 'image'
+                                          ? Center(
+                                              child: Icon(
+                                                asset.type == 'sound'
+                                                    ? Icons.music_note_rounded
+                                                    : Icons.gif_rounded,
+                                                color: Colors.white,
+                                                size: 32,
+                                              ),
+                                            )
+                                          : null,
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                            Text(
+                              message.text,
+                              style: GoogleFonts.outfit(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w500,
+                                height: 1.45,
+                              ),
+                            ),
+                          ],
                         ),
                       )
                     : Column(
@@ -1012,10 +1217,16 @@ class _AiChatScreenState extends State<AiChatScreen> {
                       decoration: BoxDecoration(
                         color: const Color(0xFF1A1A1A),
                         borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF333333)),
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: _GameThumbnail(html: message.gameHtml!),
+                        child: message.thumbnailData != null
+                            ? Image.memory(
+                                message.thumbnailData!,
+                                fit: BoxFit.cover,
+                              )
+                            : _GameThumbnail(html: message.gameHtml!),
                       ),
                     ),
                   ),
@@ -1413,56 +1624,77 @@ class _AiChatScreenState extends State<AiChatScreen> {
               ),
             ),
 
-          // Show added assets
-          if (_assets.isNotEmpty)
+          // Show added assets (Pending)
+          if (_pendingAssets.isNotEmpty)
             Container(
               margin: const EdgeInsets.only(bottom: 12),
-              height: 40,
+              height: 50,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                itemCount: _assets.length,
+                itemCount: _pendingAssets.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 8),
                 itemBuilder: (context, index) {
-                  final asset = _assets[index];
+                  final asset = _pendingAssets[index];
                   return Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
+                    width: 150,
+                    padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: asset.type == 'sound'
-                          ? const Color(0xFF5576F8).withOpacity(0.15)
-                          : const Color(0xFF25D366).withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(20),
+                      color: const Color(0xFF1E1E1E),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF333333)),
                     ),
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          asset.type == 'sound' ? Icons.music_note : Icons.gif,
-                          color: asset.type == 'sound'
-                              ? const Color(0xFF5576F8)
-                              : const Color(0xFF25D366),
-                          size: 16,
+                        // Thumbnail
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: asset.type == 'sound'
+                                ? const Color(0xFF5576F8).withOpacity(0.15)
+                                : const Color(0xFF25D366).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            image: asset.type == 'image'
+                                ? DecorationImage(
+                                    image: NetworkImage(asset.url),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
+                          ),
+                          child: asset.type != 'image'
+                              ? Icon(
+                                  asset.type == 'sound'
+                                      ? Icons.music_note
+                                      : Icons.gif,
+                                  color: asset.type == 'sound'
+                                      ? const Color(0xFF5576F8)
+                                      : const Color(0xFF25D366),
+                                  size: 20,
+                                )
+                              : null,
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          asset.name.length > 12
-                              ? '${asset.name.substring(0, 12)}...'
-                              : asset.name,
-                          style: GoogleFonts.outfit(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            asset.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.outfit(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 6),
                         GestureDetector(
                           onTap: () => _removeAsset(index),
-                          child: Icon(
-                            Icons.close,
-                            color: Colors.white.withOpacity(0.5),
-                            size: 14,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(
+                              Icons.close,
+                              color: Colors.white.withOpacity(0.5),
+                              size: 16,
+                            ),
                           ),
                         ),
                       ],
@@ -1608,8 +1840,16 @@ class ChatMessage {
   final String text;
   final bool isUser;
   final String? gameHtml; // Store HTML for game created messages
+  final Uint8List? thumbnailData; // Optimized static preview
+  final List<GameAsset>? attachments; // Assets sent with this message
 
-  ChatMessage({required this.text, required this.isUser, this.gameHtml});
+  ChatMessage({
+    required this.text,
+    required this.isUser,
+    this.gameHtml,
+    this.thumbnailData,
+    this.attachments,
+  });
 }
 
 /// Stateful widget to manage its own InAppWebView for each thumbnail

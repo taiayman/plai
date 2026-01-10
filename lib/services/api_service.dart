@@ -624,4 +624,38 @@ class ApiService {
       print('Error unliking comment: $e');
     }
   }
+
+  /// Upload an asset (image/audio)
+  Future<String> uploadAsset({
+    required String name,
+    required List<int> bytes,
+    required String mediaType, // e.g. 'image/png' or 'audio/mp3'
+  }) async {
+    try {
+      // Convert bytes to base64 for JSON transport
+      final base64Data = base64Encode(bytes);
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl/assets/upload'),
+        headers: {
+          'Content-Type': 'application/json',
+          'App-Secret': _appSecret,
+        },
+        body: jsonEncode({
+          'name': name,
+          'type': mediaType,
+          'data_base64': base64Data,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['url'];
+      } else {
+        throw Exception('Failed to upload asset: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Network error during asset upload: $e');
+    }
+  }
 }

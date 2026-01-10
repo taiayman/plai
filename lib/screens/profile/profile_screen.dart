@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../data/models/user_model.dart';
 import '../../data/models/game_model.dart';
 import '../../services/api_service.dart';
-import '../../widgets/game_thumbnail.dart';
 import '../auth/auth_modal.dart';
 import 'edit_profile_screen.dart';
 import '../main_scaffold.dart';
@@ -468,46 +467,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
           borderRadius: BorderRadius.circular(24),
           child: Stack(
             children: [
-              // Thumbnail - use WebView if game HTML available, otherwise image
-              if (game.gameUrl != null && game.gameUrl!.isNotEmpty)
-                Positioned.fill(
-                  child: GameThumbnail(
-                    gameHtml: game.gameUrl!,
-                    width: cardWidth,
-                    height: cardHeight,
-                    borderRadius: 24,
-                  ),
-                )
-              else
-                Positioned.fill(
-                  child: CachedNetworkImage(
-                    imageUrl: game.thumbnailUrl,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      color: const Color(0xFF2A2A2A),
-                      child: const Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Color(0xFF5576F8),
-                          ),
+              // Thumbnail - ALWAYS use image for performance in lists
+              Positioned.fill(
+                child: CachedNetworkImage(
+                  imageUrl: game.thumbnailUrl,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    color: const Color(0xFF2A2A2A),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF5576F8),
                         ),
                       ),
                     ),
-                    errorWidget: (context, url, error) => Container(
-                      color: const Color(0xFF2A2A2A),
-                      child: const Center(
-                        child: Icon(
-                          Icons.sports_esports_rounded,
-                          color: Color(0xFF5576F8),
-                          size: 32,
-                        ),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    color: const Color(0xFF2A2A2A),
+                    child: const Center(
+                      child: Icon(
+                        Icons.sports_esports_rounded,
+                        color: Color(0xFF5576F8),
+                        size: 32,
                       ),
                     ),
                   ),
                 ),
+              ),
               // Gradient overlay at bottom
               Positioned(
                 left: 0,

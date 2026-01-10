@@ -14,17 +14,12 @@ class GameHtmlProcessor {
         '''
     <script>
       (function() {
-        ${showDebugOverlay ? _getDebugScript() : ''}
-        
+        // ${showDebugOverlay ? _getDebugScript() : ''}
+
         function updateStatus(msg) {
-          var d = document.getElementById('debug-status');
-          if (!d) {
-            d = document.createElement('div');
-            d.id = 'debug-status';
-            d.style.cssText = 'position:fixed;top:0;left:0;background:rgba(255,0,0,0.8);color:white;font-size:12px;z-index:99999;padding:4px;pointer-events:none;white-space:pre-wrap;max-width:100%;';
-            document.body.appendChild(d);
-          }
-          d.innerHTML = msg;
+          // Debug status overlay removed for production
+          // We still log errors to console for Flutter debugging
+          console.log('[GAME ERROR]: ' + msg);
         }
 
         window.onerror = function(msg, url, line) {
@@ -45,9 +40,9 @@ class GameHtmlProcessor {
              c.height = h;
              c.style.width = w + 'px';
              c.style.height = h + 'px';
-             updateStatus("Canvas: " + w + "x" + h);
+             // updateStatus("Canvas: " + w + "x" + h);
           } else {
-             updateStatus("No Canvas Found! Win: " + w + "x" + h);
+             // updateStatus("No Canvas Found! Win: " + w + "x" + h);
           }
           // window.dispatchEvent(new Event('resize')); // CAUSES INFINITE LOOP
         }

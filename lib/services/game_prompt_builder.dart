@@ -20,11 +20,13 @@ STYLE GUIDELINES (MANDATORY):
 3. ART: High-quality emojis or crisp shapes. NO blurry/messy drawing.
 4. SFX: Use AudioContext. CRITICAL: Wrap ALL audio calls in try-catch. Audio MUST NOT crash the game.
 5. LIBS: Use cdnjs.com for Three.js (3D) or Matter.js (Physics) IF requested.
+   - DEFAULT: Use standard 2D Canvas API for 2D games (puzzles, platformers).
+   - ONLY use Three.js if user asks for "3D" or "First Person".
 6. 3D: For Three.js, camera.fov must be ~75 but logic MUST handle aspect < 1 (Portrait) by moving camera BACK or widening FOV. Canvas must fill 100% height.
    - NO external textures (jpg/png). Use simple Colors or generated Canvas textures.
    - MUST add AmbientLight AND DirectionalLight.
-7. GIFS: Async fetch url -> new Image() -> draw in loop only when loaded. API: `https://my-chat-helper.taiayman13-ed6.workers.dev/tenor/search?q=KEYWORD`.
 8. 3D CONTROLS: Virtual Joystick (Left) + Jump (Right). SWIPE screen to rotate Camera/Look.
+   - JOYSTICK MAPPING: Screen UP (-Y) -> Move FORWARD (-Z). Screen DOWN (+Y) -> Move BACKWARD (+Z).
 9. SPAWN: Disable player gravity for first 3s. Start Y=5 above ground. Prevent infinite fall loops.
 10. UI LAYOUT: Keep all UI inside 90% width centered. Use `bottom: 100px` to clear home bar.
 

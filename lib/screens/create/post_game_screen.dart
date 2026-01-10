@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:typed_data';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'dart:ui';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import '../../utils/game_html_processor.dart';
 import '../../services/api_service.dart';
 import '../../data/models/game_model.dart';
 import '../../data/models/user_model.dart';
@@ -10,8 +13,9 @@ import '../main_scaffold.dart';
 
 class PostGameScreen extends StatefulWidget {
   final String? gameHtml;
+  final Uint8List? screenshot;
 
-  const PostGameScreen({super.key, this.gameHtml});
+  const PostGameScreen({super.key, this.gameHtml, this.screenshot});
 
   @override
   State<PostGameScreen> createState() => _PostGameScreenState();
@@ -28,7 +32,8 @@ class _PostGameScreenState extends State<PostGameScreen> {
   @override
   void initState() {
     super.initState();
-    _titleController.text = 'My Game'; // Default title
+    // Default title is empty to encourage creativity
+    _titleController.text = '';
   }
 
   List<String> _extractHashtags(String text) {
@@ -208,7 +213,7 @@ class _PostGameScreenState extends State<PostGameScreen> {
                     Expanded(
                       child: _buildButton(
                         label: _isPosting ? 'Posting...' : 'Post',
-                        icon: Icons.send_rounded,
+                        icon: Icons.rocket_launch_rounded,
                         isPrimary: true,
                         isLoading: _isPosting,
                         onTap: () async {
@@ -346,42 +351,55 @@ class _PostGameScreenState extends State<PostGameScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Cover Preview (Mini Lava Lamp)
+          // Cover Preview (Actual Game)
           Container(
             width: 80,
             height: 140,
             decoration: BoxDecoration(
               color: Colors.black,
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF333333)),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Animated Blob
-                  Container(
-                        width: 60,
-                        height: 60,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF5576F8),
-                          shape: BoxShape.circle,
+              child: widget.screenshot != null
+                  ? Image.memory(
+                      widget.screenshot!,
+                      fit: BoxFit.cover,
+                    )
+                  : widget.gameHtml != null
+                      ? IgnorePointer(
+                          child: OverflowBox(
+                        alignment: Alignment.topLeft,
+                        minWidth: 160,
+                        maxWidth: 160,
+                        minHeight: 280,
+                        maxHeight: 280,
+                        child: Transform.scale(
+                          scale: 0.5,
+                          alignment: Alignment.topLeft,
+                          child: SizedBox(
+                            width: 160,
+                            height: 280,
+                            child: InAppWebView(
+                              initialSettings: InAppWebViewSettings(
+                                javaScriptEnabled: true,
+                                supportZoom: false,
+                                disableContextMenu: true,
+                                transparentBackground: true,
+                              ),
+                              initialData: InAppWebViewInitialData(
+                                data: GameHtmlProcessor.process(widget.gameHtml!),
+                                mimeType: 'text/html',
+                              ),
+                            ),
+                          ),
                         ),
-                      )
-                      .animate(onPlay: (c) => c.repeat(reverse: true))
-                      .scale(
-                        begin: const Offset(0.8, 0.8),
-                        end: const Offset(1.2, 1.2),
-                        duration: 2000.ms,
                       ),
-
-                  // Blur
-                  BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(color: Colors.black.withOpacity(0.1)),
-                  ),
-                ],
-              ),
+                    )
+                  : const Center(
+                      child: Icon(Icons.gamepad, color: Colors.white24),
+                    ),
             ),
           ),
 

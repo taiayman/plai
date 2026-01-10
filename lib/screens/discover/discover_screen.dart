@@ -6,7 +6,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../data/mock_data.dart';
 import '../../data/models/game_model.dart';
 import '../../services/api_service.dart';
-import '../../widgets/game_thumbnail.dart';
 import '../main_scaffold.dart';
 
 class DiscoverScreen extends StatefulWidget {
@@ -247,35 +246,25 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         borderRadius: BorderRadius.circular(24),
         child: Stack(
           children: [
-            // Game thumbnail - use WebView if game HTML available, otherwise image
-            if (game.gameUrl != null && game.gameUrl!.isNotEmpty)
-              Positioned.fill(
-                child: GameThumbnail(
-                  gameHtml: game.gameUrl!,
-                  width: 112,
-                  height: 200,
-                  borderRadius: 24,
-                ),
-              )
-            else
-              Positioned.fill(
-                child: CachedNetworkImage(
-                  imageUrl: game.thumbnailUrl,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) =>
-                      Container(color: const Color(0xFF2A2A2A)),
-                  errorWidget: (context, url, error) => Container(
-                    color: const Color(0xFF2A2A2A),
-                    child: const Center(
-                      child: Icon(
-                        Icons.sports_esports_rounded,
-                        color: Color(0xFF5576F8),
-                        size: 32,
-                      ),
+            // Game thumbnail - use image for performance
+            Positioned.fill(
+              child: CachedNetworkImage(
+                imageUrl: game.thumbnailUrl,
+                fit: BoxFit.cover,
+                placeholder: (context, url) =>
+                    Container(color: const Color(0xFF2A2A2A)),
+                errorWidget: (context, url, error) => Container(
+                  color: const Color(0xFF2A2A2A),
+                  child: const Center(
+                    child: Icon(
+                      Icons.sports_esports_rounded,
+                      color: Color(0xFF5576F8),
+                      size: 32,
                     ),
                   ),
                 ),
               ),
+            ),
             // Gradient overlay
             Positioned(
               left: 0,
